@@ -98,13 +98,22 @@ export async function createPaymentOrder(input: {
   // An attempt already open for this advertisement and purpose is reused
   // rather than replaced: a second order would leave the office looking at two
   // and a late webhook settling the one nobody is waiting on.
-  const { data: existing } = await supabase
+  // Scoped to the renewal as well as the advertisement. An advertisement can
+  // be renewed more than once, and an attempt abandoned on the first renewal
+  // must not be handed to the second — paying it would settle a payment
+  // attached to the wrong renewal, and the new one would stay unapprovable
+  // with the advertiser insisting, correctly, that they had paid.
+  const openAttempt = supabase
     .from('payments')
     .select('id, amount_paise, currency, provider_order_id, package_name, status')
     .eq('ad_id', input.adId)
     .eq('purpose', input.purpose)
-    .in('status', ['created', 'pending'])
-    .maybeSingle();
+    .in('status', ['created', 'pending']);
+
+  const { data: existing } = await (input.purpose === 'renewal'
+    ? openAttempt.eq('renewal_id', input.renewalId ?? '')
+    : openAttempt.is('renewal_id', null)
+  ).maybeSingle();
 
   let paymentId = existing?.id ?? null;
   let amountPaise = existing?.amount_paise ?? null;

@@ -8,10 +8,11 @@ Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 ·
 
 ## Build status
 
-**Phases 1 to 8 are complete.** The site reads and writes real data, the
-office has somewhere to work, and every advertisement has a lifecycle: a run
+**Phases 1 to 9 are complete.** The site reads and writes real data, the
+office has somewhere to work, every advertisement has a lifecycle — a run
 calculated on approval, automatic expiry, renewal through review, and
-administrator overrides with an audit trail.
+administrator overrides with an audit trail — and there is a payment provider
+behind the packages.
 
 | Phase | Scope | Status |
 | ----- | ----- | ------ |
@@ -23,7 +24,8 @@ administrator overrides with an audit trail.
 | 6 | The backend — accounts, submission, storage, payments and reports schema, audit trail | **Done** |
 | 7 | The office — admin area, moderation workflow, reports, categories, activity log | **Done** |
 | 8 | Lifecycle — expiry, the expiry sweep, renewal and its history, expiry controls | **Done** |
-| 9 | Payments integration, notifications, analytics | Not started |
+| 9 | Payments — packages and pricing, Razorpay, verification, the webhook, receipts, the ledger | **Done** |
+| 10 | Notifications and analytics | Not started |
 
 ### Routes
 
@@ -49,19 +51,36 @@ administrator overrides with an audit trail.
 | `/admin/advertisements/changes-requested`, `/approved`, `/rejected`, `/expired` | The other queues |
 | `/admin/advertisements/expiring` | Live advertisements ending soon — filter by category, type and range |
 | `/admin/advertisements/renewals` | Renewals waiting for a decision |
+| `/my-ads/payments` | The advertiser's payments, and what is still owing |
+| `/my-ads/payments/[id]` | One payment, as a receipt. Safe to refresh or bookmark |
 | `/api/cron/expire-advertisements` | The expiry sweep, for a scheduler; needs `CRON_SECRET` |
+| `/api/payments/create-order` | Raises a Razorpay order, priced from the database |
+| `/api/payments/verify` | Checks the checkout's signature server-side, and settles |
+| `/api/payments/webhook` | Razorpay's own account of what happened; needs `RAZORPAY_WEBHOOK_SECRET` |
 | `/admin/advertisements/[id]` | One advertisement, and the decisions available on it |
+| `/admin/payments` | The office ledger, filtered by status, type, package and date |
 | `/admin/reports` | Reader reports |
 | `/admin/activity` | The moderation history |
-| `/admin/categories`, `/admin/users` | Administrators only |
+| `/admin/categories`, `/admin/packages`, `/admin/users` | Administrators only |
 
 ### Not built yet, by instruction
 
-The payment provider integration, notifications and analytics. The schema for
-payments is in place and tested — what is missing is the provider, not the
-record it would settle against. Renewal chooses a package but charges nothing;
-packages carry a duration, and their price stays unset until the office supplies
-rates.
+Notifications and analytics.
+
+**Prices are still unset, and that is deliberate.** Every package ships with
+`price_paise` as NULL, because Shree Advertising quote their rates from the
+office and have not supplied them; a number invented here would put a figure in
+front of a customer that nobody at the business agreed to. An unpriced package
+costs nothing, opens no checkout, and the site behaves exactly as it did in
+Phase 8. The integration is complete and waiting: enter the rates at
+`/admin/packages` and the checkout appears. `supabase/seed/dev_package_prices.sql`
+puts development figures in for trying it out, and is not a migration.
+
+Refunds are prepared for but not built: `refunded` is a state a payment may
+reach and the transition table permits `paid → refunded`, but there is no
+refund button, because an unsafe one is worse than none. GST, tax invoices and
+billing addresses are absent for the same reason as the prices — nobody has
+said what they should be.
 
 The round trip is complete: the office can ask for a change, and the advertiser
 can make it at `/my-ads/[id]/edit` and send the advertisement back. Display
@@ -87,6 +106,8 @@ through the advertising team.
    - `0009_moderation_workflow.sql` — the transition table, the moderation call, the admin views and the dashboard counts
    - `0010_taxonomy_alignment_and_queue_detail.sql` — the "Others" category, "Nearby areas", staff corrections
    - `0011_lifecycle_and_renewals.sql` — run lengths by package, the expiry sweep, renewals, expiry overrides
+   - `0012_payment_status_cancelled.sql` — one statement, on its own: see the note inside it
+   - `0013_payments_and_pricing.sql` — payment purpose and price snapshot, the payment state machine, settlement, the webhook log, and the refusal to approve an unpaid renewal
 3. Storage buckets are created by migration `0006`, so there is nothing to do by
    hand: `ad-images` (public) and `ad-artwork` (private). If your project predates
    that migration, check under **Storage** that both exist.
@@ -106,6 +127,13 @@ Fill in from **Project Settings → API** in Supabase:
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only. Bypasses all security | **Yes** |
 | `NEXT_PUBLIC_SITE_URL` | Canonical URLs, sitemap, share links | No |
 | `CRON_SECRET` | Authorises the expiry sweep endpoint (16+ characters) | **Yes** |
+| `RAZORPAY_KEY_ID` | Identifies the account to the checkout | No |
+| `RAZORPAY_KEY_SECRET` | Signs and verifies the checkout callback. Server only | **Yes** |
+| `RAZORPAY_WEBHOOK_SECRET` | Verifies webhook deliveries. A *different* secret | **Yes** |
+
+The three Razorpay values are optional. Without them the site runs exactly as
+it does with no prices set: packages show no rate, no checkout opens, and
+advertisements reach the office with nothing to collect.
 
 `SUPABASE_SERVICE_ROLE_KEY` must never be given a `NEXT_PUBLIC_` prefix. The module
 that reads it imports `server-only`, so importing it from client code is a build error.
@@ -149,7 +177,7 @@ promoting a user normally requires an existing administrator.
 | `npm run verify` | Typecheck, lint, build and end-to-end, in that order |
 
 `db:test` needs a local Postgres 16 and `psql`; it never touches Supabase. It
-applies every migration to a scratch database and runs **229 assertions**: 22 in
+applies every migration to a scratch database and runs **272 assertions**: 22 in
 `rls_checks.sql` from Phase 1, 103 in `backend_checks.sql` covering the ten
 escalation attacks, consent, payments, reports, favourites, the audit trail,
 storage paths, slug issuance and reference format, and 60 in
@@ -158,7 +186,13 @@ audit note, what each role may read, what an advertiser may correct, staff
 corrections, that every category and location the site offers exists, and what
 the public can see at every step; and 44 in `lifecycle_checks.sql` covering run
 lengths, the sweep's idempotency, renewal timing and ownership, both renewal
-paths, the administrator overrides and every refusal between two advertisers.
+paths, the administrator overrides and every refusal between two advertisers;
+and 39 in `payment_checks.sql`, which is the payment security review written as
+assertions rather than performed once by hand — the price the client tried to
+name, the advertisement that was not theirs, the forged settlement call, the
+callback that arrived twice, the late failure notice for a payment already
+captured, the re-priced package that must not rewrite an old receipt, and the
+renewal approved without paying.
 
 `e2e` needs a browser once: `npx playwright install chromium`.
 
@@ -175,9 +209,13 @@ and after each decision, the expired-advertisement page, expiring soon, early
 and late renewal, the expiry sweep run twice, extension and manual expiry, and
 every page at phone width.
 
-`e2e` also runs `e2e/unit/expiry.spec.ts`, the expiry wording as pure
-functions — run it with `TZ=America/Los_Angeles` to see that the answers are
-Indian dates whatever the machine's clock says.
+`e2e` also runs two suites of pure functions with no browser:
+`e2e/unit/expiry.spec.ts`, the expiry wording — run it with
+`TZ=America/Los_Angeles` to see that the answers are Indian dates whatever the
+machine's clock says — and `e2e/unit/payments.spec.ts`, the payment
+signatures, which checks a genuine callback, one signed with another secret,
+one for another order, one for another payment, a webhook body that has been
+through `JSON.parse` and back, and a body altered by a single character.
 
 ---
 
@@ -204,6 +242,23 @@ so any of these, or more than one, is safe:
   database, hourly. Not a migration; run it once if you want it.
 - **Anything else** — `curl -H "Authorization: Bearer $CRON_SECRET" https://…/api/cron/expire-advertisements`.
 - **By hand** — "Run expiry check now" on `/admin/advertisements/expired`.
+
+### The Razorpay webhook
+
+Create it in the Razorpay dashboard under **Settings → Webhooks**, pointing at
+`https://your-domain/api/payments/webhook`, subscribed to `payment.captured`,
+`payment.failed` and `order.paid`. Put the secret it gives you in
+`RAZORPAY_WEBHOOK_SECRET` — it is a *different* secret from the API key secret.
+
+Without it configured the endpoint answers 503 rather than 200, so Razorpay
+keeps the event and retries once the secret is set, instead of deliveries being
+lost quietly while nobody notices.
+
+The route reads `request.text()` and never `request.json()`. The signature is an
+HMAC over the bytes exactly as they arrived, and a body that has been parsed and
+re-serialised is a different sequence of bytes. Parsing before verifying is the
+most common way this check is got wrong, and it fails in the worst direction —
+because the obvious "fix" is to stop checking.
 
 Vercel's free Hobby plan is intended for non-commercial use — a business site
 normally needs the Pro plan. Please confirm current terms on Vercel's pricing page.
@@ -289,6 +344,80 @@ administrator actions that need a reason and are written to the audit trail with
 both dates or both statuses. Every status change carries a lifecycle event name
 (`expired_automatically`, `expired_manually`, `republished`, …) so the history
 reads as what happened.
+
+### Payment is verified on the server, twice over
+
+A payment's status moves only through `settle_payment()` and `close_payment()`,
+and both refuse anyone who is not the trusted connection — EXECUTE is revoked
+from `anon` and `authenticated` as a second answer to the same question. What
+the browser is told by Razorpay's script is a claim by a script; what is
+written down is that claim after an HMAC check against the account secret,
+which the browser does not hold.
+
+There are two independent paths to settlement and they end in the same
+function. The checkout callback is the fast one; the webhook is the reliable
+one, and it is what settles a customer whose connection dropped between paying
+and returning. Implementing the business logic twice, slightly differently, is
+the classic way this goes wrong, so there is one `settlePayment()` and both
+paths call it.
+
+### `paid` is terminal, and that is what makes it idempotent
+
+`is_permitted_payment_transition()` is a transition table in the same spirit as
+`is_permitted_ad_transition()`, and its content is its absences. `paid → failed`
+is not in it. That single absence is what makes a repeated callback, a second
+tab, a refresh after payment, a retried webhook and a late `payment.failed`
+notice all harmless — without a line of application code deciding whether
+something has been seen before. `failed → paid` and `cancelled → paid` *are*
+permitted, because Razorpay may capture a payment after the browser gave up on
+it, and money having arrived is the fact that matters.
+
+Webhook deliveries also claim their event id in `payment_webhook_events` before
+doing anything, and release the claim if processing fails so that Razorpay's
+retry gets another go. No payload is stored: a Razorpay payment entity carries
+the payer's email, telephone number and card metadata, and none of that is ours
+to keep.
+
+### A price is never a number the browser sent
+
+The payment row is inserted *before* the Razorpay order is created, so the
+amount is stamped by `stamp_payment_amount()` from the `packages` table and the
+order is then raised for what the database found. A client that names a price
+names it into a column that is overwritten before it is stored. The figure the
+checkout displays is the figure the order was created for, and Razorpay charges
+against the order.
+
+Money is an integer of paise everywhere — a price that is a float is a price
+that eventually reads ₹198.99999 on somebody's receipt. Only the last step,
+showing it to a person, divides.
+
+### An old receipt does not change when the rates do
+
+Every payment carries its own `amount_paise`, `package_name` and
+`package_duration_days`, copied when the order was raised. An office that
+re-prices Standard from ₹199 to ₹249 next year does not rewrite what a receipt
+from this year says it bought. `/admin/packages` says so above the form, and
+`payment_checks.sql` asserts it.
+
+### Paying is not publishing
+
+Payment and moderation are separate states, and paid + awaiting review is an
+ordinary, correct one. Nothing in the payment path touches an advertisement's
+status — settlement writes to `payments` and stops. The receipt says both
+things rather than leaving somebody to infer that paying published their
+advertisement.
+
+The one place the two meet is the other way round: a renewal on a priced
+package cannot be *approved* until it has been paid for. That is a trigger on
+`ad_renewals` rather than a check inside `approve_renewal()`, because extending
+a run is the thing of value and there is more than one way to reach it.
+
+### The receipt is read from the database, not from the URL
+
+`/my-ads/payments/[id]` re-reads the payment every time it is opened, so a
+refresh, a second tab and a bookmark all show what actually happened. A page
+that says "Payment successful" because of its own address is a page that will
+eventually say it to somebody who was charged nothing.
 
 ### Staff correct wording; advertisers change facts
 
@@ -386,8 +515,9 @@ src/
     (auth)/                sign in, sign up, password reset, and their actions
     auth/                  callback and sign-out route handlers
     classifieds/           browse, one advertisement, report and view actions
-    my-ads/                the advertiser's dashboard, expired list, detail, renew and edit
+    my-ads/                the advertiser's dashboard, expired list, detail, renew, edit and payments
     api/cron/              the expiry sweep endpoint
+    api/payments/          create-order, verify, and Razorpay's webhook
     post-ad/               the submission form and its server action
   components/
     advertisements/        card, gallery, contact, report modal, view counter
@@ -396,12 +526,14 @@ src/
     layout/                header, footer, mobile nav
     post-ad/               the eight-step form
     lifecycle/             expiry badge and notice, renewal history and form, timeline
+    payments/              the checkout panel and the payment status badge
     ui/                    button, badge, container, field, icons, states
   lib/
     auth/                  session reading and the account schemas
     classifieds/           query parsing, filters, similarity — pure functions
     data/                  data access — public_ads, owner_ads, packages, settings
     lifecycle/             expiry wording in Indian calendar days, dashboard figures
+    payments/              Razorpay client, signatures, order and settlement service, webhook
     post-ad/               schema, state, drafts, file rules, content sniffing
     supabase/              browser, server, anonymous and service-role clients
     env.ts                 zod-validated environment access
@@ -410,7 +542,9 @@ supabase/
   migrations/              numbered, run in order
   test/                    local validation harness (never applied to Supabase)
   scheduling/              optional pg_cron schedule for the expiry sweep
+  seed/                    development-only package rates; NOT a migration
 e2e/                       Playwright, against a production build
+  unit/                    pure functions — expiry wording, payment signatures
   db/                      the admin suite, against a real local database
     harness/               seed, PostgREST launcher, auth gateway, build
 ```

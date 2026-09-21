@@ -88,16 +88,25 @@ create unique index if not exists payments_provider_payment_idx
   where provider_payment_id is not null;
 
 /*
- * At most one payment attempt open per advertisement per purpose.
+ * At most one payment attempt open per thing being paid for.
  *
  * "Try again" after a failure, and a second tab, must not leave two live
  * orders against one advertisement — the office would see two, and a late
  * webhook for the abandoned one would settle something nobody is waiting on.
  * `failed` and `cancelled` are absent from the predicate on purpose: those are
  * finished attempts, and a retry is a new row.
+ *
+ * `renewal_id` is in the key, and NULLS NOT DISTINCT is what makes that work.
+ * A new advertisement's payments carry no renewal, so without it two open
+ * rows would be permitted (NULLs being distinct by default) and the guarantee
+ * above would quietly not hold. With it, a new advertisement gets one open
+ * attempt, and each renewal gets its own — which matters, because an
+ * advertisement can be renewed more than once and an attempt abandoned on the
+ * first renewal must not be picked up and settled against the second.
  */
+drop index if exists public.payments_one_open_attempt_idx;
 create unique index if not exists payments_one_open_attempt_idx
-  on public.payments (ad_id, purpose)
+  on public.payments (ad_id, purpose, renewal_id) nulls not distinct
   where status in ('created', 'pending');
 
 create index if not exists payments_renewal_idx

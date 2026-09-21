@@ -178,6 +178,34 @@ begin
   end;
 end $$;
 
+-- The index keys on the renewal too, and NULLS NOT DISTINCT is what makes the
+-- assertion above hold for a new advertisement, whose renewal_id is NULL.
+-- Without it two open attempts would be permitted, because NULLs are distinct
+-- in a unique index by default.
+reset role;
+select set_config('test.uid', '', false);
+do $$
+declare
+  n int;
+begin
+  select count(*) into n
+    from pg_index i
+    join pg_class c on c.oid = i.indexrelid
+   where c.relname = 'payments_one_open_attempt_idx'
+     and i.indnullsnotdistinct
+     and (
+       select array_agg(a.attname::text order by k.ord)
+         from unnest(i.indkey) with ordinality as k(attnum, ord)
+         join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+     ) = array['ad_id', 'purpose', 'renewal_id'];
+  assert n = 1,
+    'the open-attempt index must key on the renewal and treat NULL renewals as equal';
+  perform public.ok('an open attempt is keyed to the renewal, and to NULL for a new advertisement');
+end $$;
+
+set role authenticated;
+select set_config('test.uid', '2a000000-0000-4000-8000-000000000001', false);
+
 -- =========================================================================
 -- 5. Settlement: verified, idempotent, and its own amount
 -- =========================================================================

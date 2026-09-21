@@ -7,6 +7,7 @@ import {
   paymentPurposeLabel,
 } from '@/components/payments/payment-status';
 import { getAdminPayments, type PaymentFilters } from '@/lib/data/payments';
+import { razorpayConfig } from '@/lib/payments/config';
 import { getPackageConfigs } from '@/lib/data/packages';
 import { formatDate, formatPaise } from '@/lib/format';
 import type { RawSearchParams } from '@/lib/admin/query';
@@ -79,6 +80,7 @@ export default async function AdminPaymentsPage({
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const provider = razorpayConfig();
 
   return (
     <>
@@ -87,6 +89,27 @@ export default async function AdminPaymentsPage({
         description="Every payment raised, and what became of it. Status comes from a verified settlement and cannot be set by hand."
         count={total}
       />
+
+      {/*
+        Which set of keys the site is running on, said out loud.
+
+        Razorpay issues test keys as `rzp_test_…`, and a test-mode payment
+        looks exactly like a real one on this page — same amount, same status,
+        same reference. An office reconciling a month's takings against a bank
+        statement that has none of them in it deserves to have been told, and
+        the only moment to tell them is while they are looking at the figures.
+      */}
+      {provider === null ? (
+        <p className="mb-4 rounded-sm border border-line bg-surface-sunken p-3 text-sm text-fg-muted">
+          Online payment is not configured, so no new payments can be taken. Advertisements still
+          reach the office; nothing is collected.
+        </p>
+      ) : provider.isTestMode ? (
+        <p className="mb-4 rounded-sm border border-accent-line bg-accent-surface p-3 text-sm font-medium text-accent-fg">
+          Razorpay is in TEST mode. Payments listed here were not real, and no money has reached the
+          bank.
+        </p>
+      ) : null}
 
       <form method="get" className="mb-4 grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Search">
