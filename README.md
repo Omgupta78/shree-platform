@@ -177,7 +177,7 @@ promoting a user normally requires an existing administrator.
 | `npm run verify` | Typecheck, lint, build and end-to-end, in that order |
 
 `db:test` needs a local Postgres 16 and `psql`; it never touches Supabase. It
-applies every migration to a scratch database and runs **272 assertions**: 22 in
+applies every migration to a scratch database and runs **274 assertions**: 22 in
 `rls_checks.sql` from Phase 1, 103 in `backend_checks.sql` covering the ten
 escalation attacks, consent, payments, reports, favourites, the audit trail,
 storage paths, slug issuance and reference format, and 60 in
@@ -187,7 +187,7 @@ corrections, that every category and location the site offers exists, and what
 the public can see at every step; and 44 in `lifecycle_checks.sql` covering run
 lengths, the sweep's idempotency, renewal timing and ownership, both renewal
 paths, the administrator overrides and every refusal between two advertisers;
-and 39 in `payment_checks.sql`, which is the payment security review written as
+and 41 in `payment_checks.sql`, which is the payment security review written as
 assertions rather than performed once by hand — the price the client tried to
 name, the advertisement that was not theirs, the forged settlement call, the
 callback that arrived twice, the late failure notice for a payment already

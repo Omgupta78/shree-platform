@@ -142,6 +142,15 @@ begin
   end if;
 
   if new.purpose = 'renewal' then
+    -- Said separately from the lookup below, which would otherwise report a
+    -- missing renewal as somebody else's renewal. `payments_renewal_has_id`
+    -- enforces the same thing, but a BEFORE trigger runs first and would get
+    -- there with the wrong message.
+    if new.renewal_id is null then
+      raise exception 'A renewal payment must name the renewal it is for'
+        using errcode = 'check_violation';
+    end if;
+
     select r.package_id into chosen
       from public.ad_renewals r
      where r.id = new.renewal_id and r.ad_id = new.ad_id and r.user_id = ad_owner;

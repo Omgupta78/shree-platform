@@ -412,6 +412,30 @@ begin
   assert n = 19900,
     format('the renewal was priced at %s paise, expected the renewal package''s 19900', n);
   perform public.ok('a renewal is priced from the package the renewal names');
+
+  -- A renewal id belonging to somebody else's advertisement. Refused by the
+  -- stamping trigger, which is checked here from the trusted connection so
+  -- that it is the TRIGGER being tested and not row-level security standing
+  -- in front of it.
+  begin
+    insert into public.payments (ad_id, user_id, package_id, amount_paise, purpose, renewal_id,
+                                 provider, provider_order_id)
+    values (public.test_ad_id('Payments B plot'), '2b000000-0000-4000-8000-000000000002',
+            'basic', 1, 'renewal', rid, 'razorpay', 'order_B_stolen_renewal');
+    raise exception 'FAIL: a payment was raised against another advertisement''s renewal';
+  exception when foreign_key_violation then
+    perform public.ok('a renewal payment must name a renewal of its own advertisement');
+  end;
+
+  begin
+    insert into public.payments (ad_id, user_id, package_id, amount_paise, purpose, renewal_id,
+                                 provider, provider_order_id)
+    values (ad, '2a000000-0000-4000-8000-000000000001', 'basic', 1, 'renewal', null,
+            'razorpay', 'order_A_no_renewal');
+    raise exception 'FAIL: a renewal payment was raised naming no renewal at all';
+  exception when check_violation then
+    perform public.ok('a renewal payment cannot be raised without naming a renewal');
+  end;
 end $$;
 
 set role authenticated;
