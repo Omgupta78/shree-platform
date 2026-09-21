@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { SITE } from '@/config/site';
 import Link from 'next/link';
 
 import { SignInRequired } from '@/components/auth/sign-in-required';
@@ -108,8 +109,13 @@ export default async function EditAdvertisementPage({
           <p className="mt-8 rounded-sm border border-line bg-surface-sunken p-3 text-xs text-fg-muted">
             Artwork cannot be changed here yet. To send a new file, reply to the email from our
             advertising team or{' '}
-            <Button href="/contact" variant="ghost" size="sm" className="px-1">
-              contact the office
+            <Button
+              href={`tel:+91${SITE.phones[0]}`}
+              variant="ghost"
+              size="sm"
+              className="px-1"
+            >
+              call the office on {SITE.phones[0]}
             </Button>
             .
           </p>

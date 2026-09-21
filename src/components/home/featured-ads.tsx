@@ -29,7 +29,7 @@ export function FeaturedAds({
           className="mt-8"
           title="No featured advertisements yet"
           description="Featured placements appear here once they are booked."
-          action={{ label: 'Advertise with us', href: '/advertise' }}
+          action={{ label: 'Advertise with us', href: '/post-ad' }}
         />
       ) : (
         <ul className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">

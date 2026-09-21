@@ -136,14 +136,11 @@ export function releaseImages(images: readonly SubmissionImage[]): void {
   }
 }
 
-/**
- * TODO(storage): upload the file and return the stored object's path.
- *
- * The intended shape: upload to a private bucket under
- * `submissions/<submission id>/<index>-<random>.<ext>`, let the server decide
- * the extension from sniffed content rather than the client's file name, and
- * return the path. The form does not change; only this function gains a body.
+/*
+ * There was a `prepareUpload()` stub here, with a TODO describing how uploads
+ * would work. Phase 6 built them for real — `app/post-ad/actions.ts` sniffs
+ * each file's content, names it from the sniffed type rather than from the
+ * client's file name, and stores it under `<user id>/<ad id>/<file>`. The stub
+ * outlived the thing it was waiting for and returned a `blob:` URL to anyone
+ * who called it, which nobody did.
  */
-export async function prepareUpload(image: SubmissionImage): Promise<string> {
-  return Promise.resolve(image.previewUrl);
-}

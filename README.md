@@ -27,6 +27,24 @@ behind the packages.
 | 9 | Payments — packages and pricing, Razorpay, verification, the webhook, receipts, the ledger | **Done** |
 | 10 | Notifications and analytics | Not started |
 
+### Pages the navigation promises but does not have yet
+
+`/edition`, `/advertise`, `/about`, `/contact`, `/privacy`, `/terms`,
+`/disclaimer` and `/report`. Each is an entry in `config/navigation.ts` carrying
+`built: false`, which is what keeps it out of the header, the mobile menu and
+the footer — the same treatment the admin sidebar has always given an unbuilt
+section, for the reason written there: a navigation item that 404s teaches
+people to distrust the whole menu.
+
+Writing the page and setting `built: true` is the whole of the work.
+`e2e/navigation.spec.ts` asserts the flag tells the truth in both directions,
+so a page that gets written cannot stay hidden and a link that gets shown
+cannot 404.
+
+The legal pages are deliberately not drafted here: privacy, terms and the
+disclaimer are the business's own words and should be read by somebody
+qualified before they are published.
+
 ### Routes
 
 | Route | What it is |
@@ -216,6 +234,12 @@ machine's clock says — and `e2e/unit/payments.spec.ts`, the payment
 signatures, which checks a genuine callback, one signed with another secret,
 one for another order, one for another payment, a webhook body that has been
 through `JSON.parse` and back, and a body altered by a single character.
+
+`e2e/navigation.spec.ts` walks the site's own menus and asks the server for
+every link in them. It exists because eight header and footer links — on every
+page — answered 404 for several phases without a typecheck, a build or a test
+noticing: the pages they point at do not exist, and nothing but a request finds
+that out.
 
 ---
 
@@ -480,7 +504,12 @@ migration.
 
 Advertisement duration, image limits, the office address, phone numbers and
 WhatsApp number are database rows, not constants. Changing the office phone number
-is an UPDATE, not a deployment. The footer and header read from this table.
+is an UPDATE, not a deployment.
+
+The footer reads them through `getOfficeDetails()`, with `src/config/site.ts` as
+the fallback — field by field, so an unset row falls back to the value printed in
+the paper rather than blanking the address. Those constants are what the site
+falls back to, not what it shows.
 
 ### Full-text search uses the `simple` dictionary
 
@@ -544,6 +573,7 @@ supabase/
   scheduling/              optional pg_cron schedule for the expiry sweep
   seed/                    development-only package rates; NOT a migration
 e2e/                       Playwright, against a production build
+  navigation.spec.ts       every link in the header and footer, asked of the server
   unit/                    pure functions — expiry wording, payment signatures
   db/                      the admin suite, against a real local database
     harness/               seed, PostgREST launcher, auth gateway, build

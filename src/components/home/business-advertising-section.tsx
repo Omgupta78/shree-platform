@@ -45,7 +45,7 @@ export function BusinessAdvertisingSection() {
             placement that suits it.
           </p>
           <div className="mt-6 space-y-2.5">
-            <Button href="/advertise" size="lg" fullWidth>
+            <Button href="/post-ad" size="lg" fullWidth>
               Start Advertising
             </Button>
             <Button

@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { z } from 'zod';
 
+import { SITE } from '@/config/site';
 import { isSupabaseConfigured } from '@/lib/env';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -49,4 +50,37 @@ export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
   // A malformed row must not take the whole page down.
   const parsed = settingsSchema.safeParse(raw);
   return parsed.success ? parsed.data : FALLBACK_SETTINGS;
+});
+
+/**
+ * The office's own details, as the footer prints them.
+ *
+ * `app_settings` is the source and `config/site.ts` is the fallback, in that
+ * order, field by field. The fallback matters: `FALLBACK_SETTINGS` above
+ * defaults the address, telephone numbers and email to empty strings, which is
+ * right for a schema and wrong for a footer — an unset row must not blank out
+ * the address printed in the paper.
+ *
+ * This is what makes the architecture note true. Until now the footer read
+ * `SITE` directly, so changing the office telephone number meant a
+ * deployment, whatever the README said. Now it is an UPDATE, and the constants
+ * are what the site falls back to rather than what it shows.
+ */
+export interface OfficeDetails {
+  legalName: string;
+  address: string;
+  phones: readonly string[];
+  whatsapp: string;
+  email: string;
+}
+
+export const getOfficeDetails = cache(async (): Promise<OfficeDetails> => {
+  const settings = await getSiteSettings();
+  return {
+    legalName: settings.legal_name || SITE.publisher,
+    address: settings.address || SITE.address,
+    phones: settings.phones.length > 0 ? settings.phones : SITE.phones,
+    whatsapp: settings.whatsapp || SITE.whatsapp,
+    email: settings.email || SITE.email,
+  };
 });

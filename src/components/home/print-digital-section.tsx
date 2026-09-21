@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { SITE } from '@/config/site';
 import { Container } from '@/components/ui/container';
 import { GlobeIcon, NewspaperIcon, ShareIcon } from '@/components/ui/icons';
 import type { ComponentType, SVGProps } from 'react';
@@ -76,11 +77,11 @@ export function PrintDigitalSection() {
         </ol>
 
         <div className="mt-10 flex flex-wrap gap-3">
-          <Button href="/advertise" size="lg">
+          <Button href="/post-ad" size="lg">
             Advertise With Shree Classified
           </Button>
-          <Button href="/contact" variant="onDark" size="lg">
-            Contact Us
+          <Button href={`tel:+91${SITE.phones[0]}`} variant="onDark" size="lg">
+            Call {SITE.phones[0]}
           </Button>
         </div>
       </Container>

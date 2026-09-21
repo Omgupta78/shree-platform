@@ -9,6 +9,7 @@ import { Hero } from '@/components/home/hero';
 import { LatestClassifieds } from '@/components/home/latest-classifieds';
 import { PrintDigitalSection } from '@/components/home/print-digital-section';
 import { TodaysEdition } from '@/components/home/todays-edition';
+import { isPageBuilt } from '@/config/navigation';
 import { SITE } from '@/config/site';
 import {
   getFeaturedAdvertisements,
@@ -52,7 +53,18 @@ export default async function HomePage() {
       <AdvertisementTypes />
       <FeaturedAds advertisements={featured} />
       <LatestClassifieds advertisements={latest} />
-      <TodaysEdition current={CURRENT_EDITION} previous={PREVIOUS_EDITIONS} />
+      {/*
+        The edition panel waits for a real edition feature.
+
+        `lib/mock/editions.ts` says on its face that it is placeholder data,
+        but it was rendering unconditionally — so a live site showed invented
+        edition numbers, with two buttons to `/edition`, which answers 404.
+        One flag in `config/navigation.ts` now governs both this and the menu
+        item, so the two cannot disagree again.
+      */}
+      {isPageBuilt('/edition') ? (
+        <TodaysEdition current={CURRENT_EDITION} previous={PREVIOUS_EDITIONS} />
+      ) : null}
       <PrintDigitalSection />
       <BusinessAdvertisingSection />
       <BusinessInfoSection />

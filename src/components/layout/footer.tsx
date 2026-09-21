@@ -5,9 +5,21 @@ import { MailIcon, MapPinIcon, PhoneIcon } from '@/components/ui/icons';
 import { CATEGORIES, categoryHref } from '@/config/categories';
 import { LEGAL_NAV, PRIMARY_NAV } from '@/config/navigation';
 import { SITE } from '@/config/site';
+import { getOfficeDetails } from '@/lib/data/settings';
 import { formatPhone, telHref } from '@/lib/format';
 
-export function Footer() {
+/**
+ * The office's details come from `app_settings`, not from the constants.
+ *
+ * `config/site.ts` is the fallback — what the site shows before the database
+ * is connected, and what it falls back to field by field if a row is unset.
+ * Changing the office telephone number is therefore an UPDATE rather than a
+ * deployment, which is what the architecture note has always claimed and what
+ * the footer did not in fact do until now.
+ */
+export async function Footer() {
+  const office = await getOfficeDetails();
+
   return (
     <footer className="mt-20 bg-chrome text-chrome-fg">
       <Container className="grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">
@@ -25,7 +37,7 @@ export function Footer() {
             Local classified and display advertising for {SITE.city} and Haridwar district,
             in print and online.
           </p>
-          <p className="mt-4 text-xs text-chrome-muted">Published by {SITE.publisher}</p>
+          <p className="mt-4 text-xs text-chrome-muted">Published by {office.legalName}</p>
         </div>
 
         <nav aria-labelledby="footer-links">
@@ -77,9 +89,9 @@ export function Footer() {
           <address className="mt-4 space-y-3 text-sm not-italic text-chrome-muted">
             <p className="flex gap-2.5">
               <MapPinIcon size={15} className="mt-0.5 shrink-0" />
-              <span>{SITE.address}</span>
+              <span>{office.address}</span>
             </p>
-            {SITE.phones.map((phone) => (
+            {office.phones.map((phone) => (
               <p key={phone} className="flex items-center gap-2.5">
                 <PhoneIcon size={15} className="shrink-0" />
                 <a href={telHref(phone)} className="transition-colors hover:text-chrome-fg">
@@ -90,29 +102,34 @@ export function Footer() {
             <p className="flex items-center gap-2.5">
               <MailIcon size={15} className="shrink-0" />
               <a
-                href={`mailto:${SITE.email}`}
+                href={`mailto:${office.email}`}
                 className="transition-colors hover:text-chrome-fg"
               >
-                {SITE.email}
+                {office.email}
               </a>
             </p>
           </address>
 
-          <h2 className="mt-8 text-xs font-semibold tracking-[0.14em] text-chrome-fg uppercase">
-            Legal
-          </h2>
-          <ul className="mt-4 space-y-2.5">
-            {LEGAL_NAV.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className="text-sm text-chrome-muted transition-colors hover:text-chrome-fg"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {/* Nothing but a heading, while none of the legal pages exist yet. */}
+          {LEGAL_NAV.length > 0 ? (
+            <>
+              <h2 className="mt-8 text-xs font-semibold tracking-[0.14em] text-chrome-fg uppercase">
+                Legal
+              </h2>
+              <ul className="mt-4 space-y-2.5">
+                {LEGAL_NAV.map((link) => (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className="text-sm text-chrome-muted transition-colors hover:text-chrome-fg"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </div>
       </Container>
 
@@ -121,7 +138,7 @@ export function Footer() {
         <Container className="py-6">
           <p className="text-xs leading-relaxed text-chrome-muted">{SITE.readerDisclaimer}</p>
           <p className="mt-4 text-xs text-chrome-muted">
-            &copy; {new Date().getFullYear()} {SITE.publisher}, {SITE.city}. All rights reserved.
+            &copy; {new Date().getFullYear()} {office.legalName}, {SITE.city}. All rights reserved.
             &middot; {SITE.website}
           </p>
         </Container>

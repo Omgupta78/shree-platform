@@ -43,7 +43,7 @@ const TYPES: readonly AdvertisementType[] = [
       'Promotional campaigns',
       'Large visual advertisements',
     ],
-    cta: { href: '/advertise', label: 'Advertise Your Business' },
+    cta: { href: '/post-ad', label: 'Advertise Your Business' },
   },
 ] as const;
 

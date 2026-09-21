@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { AdminChrome } from '@/components/admin/admin-chrome';
@@ -7,6 +6,7 @@ import { SetupNotice } from '@/components/setup-notice';
 import { Button } from '@/components/ui/button';
 import { Container } from '@/components/ui/container';
 import { buildNotices, getDashboardCounts } from '@/lib/admin/dashboard';
+import { SITE } from '@/config/site';
 import { getStaffMember } from '@/lib/admin/guard';
 import { getCurrentUser } from '@/lib/auth/session';
 import { isSupabaseConfigured } from '@/lib/env';
@@ -96,9 +96,12 @@ function Refusal({ signedIn }: { signedIn: boolean }) {
         </div>
         <p className="mt-6 text-xs text-fg-subtle">
           If you should have access,{' '}
-          <Link href="/contact" className="underline underline-offset-2">
-            ask the office
-          </Link>{' '}
+          <a
+            href={`tel:+91${SITE.phones[0]}`}
+            className="underline underline-offset-2"
+          >
+            ask the office on {SITE.phones[0]}
+          </a>{' '}
           to grant it.
         </p>
       </div>
