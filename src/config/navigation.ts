@@ -139,6 +139,7 @@ export const ADMIN_NAV: ReadonlyArray<{ heading: string; items: readonly AdminNa
     heading: 'Office',
     items: [
       { href: '/admin/payments', label: 'Payments', built: true },
+      { href: '/admin/notifications', label: 'Notifications', built: true },
       { href: '/admin/reports', label: 'Reports', built: true, badge: 'open_reports' },
       { href: '/admin/activity', label: 'Activity log', built: true },
       { href: '/admin/categories', label: 'Categories', built: true, adminOnly: true },

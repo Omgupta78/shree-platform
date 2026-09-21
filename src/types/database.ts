@@ -21,6 +21,39 @@ export type PaymentStatus =
 
 /** Why an advertiser is being charged. Mirrors `payment_purpose`. */
 export type PaymentPurpose = 'new_advertisement' | 'renewal';
+
+/**
+ * What somebody can be told. Mirrors `notification_type`.
+ *
+ * A closed list, in the database as an enum, so a type is checked rather than
+ * copied. The `staff_` ones are the office's own queue notices and are never
+ * addressed to an advertiser.
+ */
+export type NotificationType =
+  | 'advertisement_submitted'
+  | 'advertisement_approved'
+  | 'advertisement_rejected'
+  | 'advertisement_changes_requested'
+  | 'advertisement_expiring'
+  | 'advertisement_expired'
+  | 'renewal_submitted'
+  | 'renewal_approved'
+  | 'renewal_rejected'
+  | 'payment_successful'
+  | 'payment_failed'
+  | 'payment_cancelled'
+  | 'staff_advertisement_submitted'
+  | 'staff_renewal_submitted'
+  | 'staff_payment_received'
+  | 'staff_report_received';
+
+export type NotificationChannel = 'in_app' | 'email' | 'whatsapp';
+
+/** `skipped` is a real outcome: there was nowhere to send, so nothing was tried. */
+export type NotificationDeliveryStatus = 'queued' | 'sent' | 'failed' | 'skipped';
+
+/** Which preference switch governs a type. Mirrors `notification_group()`. */
+export type NotificationGroup = 'advertisement' | 'payment' | 'expiry';
 export type ReportReason =
   | 'spam'
   | 'fraud'
@@ -350,6 +383,68 @@ export interface Database {
         };
         Relationships: [];
       };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: NotificationType;
+          title: string;
+          body: string;
+          entity_type: 'advertisement' | 'payment' | 'renewal' | 'report' | null;
+          entity_id: string | null;
+          href: string | null;
+          is_read: boolean;
+          read_at: string | null;
+          dedupe_key: string;
+          created_at: string;
+        };
+        /** Raised by triggers only. There is no INSERT policy for a request. */
+        Insert: never;
+        Update: { is_read?: boolean; read_at?: string | null };
+        Relationships: [];
+      };
+      notification_deliveries: {
+        Row: {
+          id: string;
+          notification_id: string;
+          channel: Exclude<NotificationChannel, 'in_app'>;
+          status: NotificationDeliveryStatus;
+          attempts: number;
+          scheduled_at: string;
+          sent_at: string | null;
+          failed_at: string | null;
+          error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          email_advertisement_updates: boolean;
+          email_payment_updates: boolean;
+          email_expiry_reminders: boolean;
+          whatsapp_advertisement_updates: boolean;
+          whatsapp_payment_updates: boolean;
+          whatsapp_expiry_reminders: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          email_advertisement_updates?: boolean;
+          email_payment_updates?: boolean;
+          email_expiry_reminders?: boolean;
+          whatsapp_advertisement_updates?: boolean;
+          whatsapp_payment_updates?: boolean;
+          whatsapp_expiry_reminders?: boolean;
+        };
+        Update: Partial<Omit<Database['public']['Tables']['notification_preferences']['Insert'], 'user_id'>>;
+        Relationships: [];
+      };
       payment_webhook_events: {
         Row: {
           event_id: string;
@@ -474,6 +569,22 @@ export interface Database {
           ad_title: string;
           ad_slug: string | null;
           ad_status: AdStatus;
+        };
+        Relationships: [];
+      };
+      /** An advertiser's own notifications. The dedupe key is not in it. */
+      my_notifications: {
+        Row: {
+          id: string;
+          type: NotificationType;
+          title: string;
+          body: string;
+          entity_type: 'advertisement' | 'payment' | 'renewal' | 'report' | null;
+          entity_id: string | null;
+          href: string | null;
+          is_read: boolean;
+          read_at: string | null;
+          created_at: string;
         };
         Relationships: [];
       };
@@ -691,6 +802,32 @@ export interface Database {
         Args: { p_from: AdStatus; p_to: AdStatus };
         Returns: boolean;
       };
+      mark_notification_read: { Args: { p_id: string }; Returns: boolean };
+      mark_all_notifications_read: { Args: Record<string, never>; Returns: number };
+      /** The expiring-soon sweep. Idempotent on the advertisement's expiry date. */
+      notify_expiring_advertisements: { Args: Record<string, never>; Returns: number };
+      /** Trusted connection only. Claims due deliveries with FOR UPDATE SKIP LOCKED. */
+      claim_notification_deliveries: {
+        Args: { p_limit?: number };
+        Returns: Array<{
+          delivery_id: string;
+          channel: Exclude<NotificationChannel, 'in_app'>;
+          attempts: number;
+          notification_id: string;
+          user_id: string;
+          type: NotificationType;
+          title: string;
+          body: string;
+          href: string | null;
+          full_name: string;
+          email: string | null;
+          phone: string | null;
+        }>;
+      };
+      complete_notification_delivery: {
+        Args: { p_id: string; p_status: NotificationDeliveryStatus; p_error?: string | null };
+        Returns: NotificationDeliveryStatus;
+      };
       is_permitted_payment_transition: {
         Args: { p_from: PaymentStatus; p_to: PaymentStatus };
         Returns: boolean;
@@ -786,3 +923,5 @@ export type AdminUserRow = Views<'admin_users'>;
 export type AdminActionRow = Views<'admin_actions'>;
 export type MyPaymentRow = Views<'my_payments'>;
 export type AdminPaymentRow = Views<'admin_payments'>;
+export type MyNotificationRow = Views<'my_notifications'>;
+export type NotificationPreferencesRow = Tables<'notification_preferences'>;

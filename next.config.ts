@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
       { source: '/dashboard/advertisements/:id/renew', destination: '/my-ads/:id/renew', permanent: false },
       { source: '/dashboard/payments', destination: '/my-ads/payments', permanent: false },
       { source: '/dashboard/payments/:id', destination: '/my-ads/payments/:id', permanent: false },
+      { source: '/dashboard/notifications', destination: '/my-ads/notifications', permanent: false },
+      {
+        source: '/dashboard/settings/notifications',
+        destination: '/my-ads/settings/notifications',
+        permanent: false,
+      },
     ];
   },
   poweredByHeader: false,

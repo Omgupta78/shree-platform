@@ -1,6 +1,8 @@
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Button } from '@/components/ui/button';
 import { ACCOUNT_ACTIONS } from '@/config/navigation';
 import { getCurrentProfile } from '@/lib/auth/session';
+import { getNotificationInbox } from '@/lib/data/notifications';
 
 /**
  * The account corner of the header.
@@ -39,8 +41,26 @@ export async function AccountActions({ variant = 'header' }: { variant?: 'header
   const firstName = profile.full_name.split(/\s+/)[0] ?? 'Account';
   const staff = !profile.is_blocked && profile.role !== 'user';
 
+  // Read here rather than polled from the browser: every page is rendered per
+  // request, so the count is already fresh on each navigation.
+  const inbox = await getNotificationInbox();
+
   return (
     <>
+      {/*
+        The bell shows in the header proper, not in the mobile menu — the menu
+        is a list of links, and a panel that opens inside another panel is a
+        trap on a telephone. The notification centre is linked from the menu
+        instead.
+      */}
+      {menu ? (
+        <Button href="/my-ads/notifications" variant="secondary" {...shared}>
+          Notifications{inbox.unread ? ` (${inbox.unread})` : ''}
+        </Button>
+      ) : (
+        <NotificationBell notifications={inbox.items} unread={inbox.unread} />
+      )}
+
       {/*
         The way into the office, for the people who have one. Hiding this link
         is not what keeps anyone out — the proxy, the admin layout and the

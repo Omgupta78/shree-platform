@@ -8,7 +8,7 @@ Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 ·
 
 ## Build status
 
-**Phases 1 to 9 are complete.** The site reads and writes real data, the
+**Phases 1 to 10 are complete.** The site reads and writes real data, the
 office has somewhere to work, every advertisement has a lifecycle — a run
 calculated on approval, automatic expiry, renewal through review, and
 administrator overrides with an audit trail — and there is a payment provider
@@ -25,7 +25,8 @@ behind the packages.
 | 7 | The office — admin area, moderation workflow, reports, categories, activity log | **Done** |
 | 8 | Lifecycle — expiry, the expiry sweep, renewal and its history, expiry controls | **Done** |
 | 9 | Payments — packages and pricing, Razorpay, verification, the webhook, receipts, the ledger | **Done** |
-| 10 | Notifications and analytics | Not started |
+| 10 | Notifications — in-app, email and WhatsApp, with preferences and a send queue | **Done** |
+| 11 | Analytics | Not started |
 
 ### Pages the navigation promises but does not have yet
 
@@ -74,19 +75,35 @@ qualified before they are published.
 | `/admin/advertisements/renewals` | Renewals waiting for a decision |
 | `/my-ads/payments` | The advertiser's payments, and what is still owing |
 | `/my-ads/payments/[id]` | One payment, as a receipt. Safe to refresh or bookmark |
+| `/my-ads/notifications` | Everything the advertiser has been told |
+| `/my-ads/settings/notifications` | Which channels they hear on |
 | `/api/cron/expire-advertisements` | The expiry sweep, for a scheduler; needs `CRON_SECRET` |
+| `/api/cron/send-notifications` | Raises expiry reminders and drains the send queue; needs `CRON_SECRET` |
 | `/api/payments/create-order` | Raises a Razorpay order, priced from the database |
 | `/api/payments/verify` | Checks the checkout's signature server-side, and settles |
 | `/api/payments/webhook` | Razorpay's own account of what happened; needs `RAZORPAY_WEBHOOK_SECRET` |
 | `/admin/advertisements/[id]` | One advertisement, and the decisions available on it |
 | `/admin/payments` | The office ledger, filtered by status, type, package and date |
+| `/admin/notifications` | What has arrived for you |
+| `/admin/notifications/templates` | Every message the site sends, and when |
 | `/admin/reports` | Reader reports |
 | `/admin/activity` | The moderation history |
 | `/admin/categories`, `/admin/packages`, `/admin/users` | Administrators only |
 
 ### Not built yet, by instruction
 
-Notifications and analytics.
+Analytics.
+
+**No provider is connected, and that is the shipping state.** Without
+`RESEND_API_KEY` or the WhatsApp settings, notifications are still raised and
+the in-app centre still fills; the queued email and WhatsApp rows are recorded
+as `skipped` with a reason saying no provider is configured, rather than piling
+up as failures. Connect a provider and the same queue starts sending.
+
+Promotional messaging is deliberately absent. Everything here is
+transactional — a message about an advertisement somebody booked — and the
+email footer says so. If marketing is ever wanted it needs its own consent and
+unsubscribe system, not a flag on these.
 
 **Prices are still unset, and that is deliberate.** Every package ships with
 `price_paise` as NULL, because Shree Advertising quote their rates from the
@@ -151,6 +168,8 @@ Fill in from **Project Settings → API** in Supabase:
 | `RAZORPAY_KEY_ID` | Identifies the account to the checkout | No |
 | `RAZORPAY_KEY_SECRET` | Signs and verifies the checkout callback. Server only | **Yes** |
 | `RAZORPAY_WEBHOOK_SECRET` | Verifies webhook deliveries. A *different* secret | **Yes** |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Transactional email. Optional | **Key: yes** |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME` | WhatsApp. Optional | **Token: yes** |
 
 The three Razorpay values are optional. Without them the site runs exactly as
 it does with no prices set: packages show no rate, no checkout opens, and
@@ -198,7 +217,7 @@ promoting a user normally requires an existing administrator.
 | `npm run verify` | Typecheck, lint, build and end-to-end, in that order |
 
 `db:test` needs a local Postgres 16 and `psql`; it never touches Supabase. It
-applies every migration to a scratch database and runs **274 assertions**: 22 in
+applies every migration to a scratch database and runs **324 assertions**: 22 in
 `rls_checks.sql` from Phase 1, 103 in `backend_checks.sql` covering the ten
 escalation attacks, consent, payments, reports, favourites, the audit trail,
 storage paths, slug issuance and reference format, and 60 in
@@ -213,7 +232,11 @@ assertions rather than performed once by hand — the price the client tried to
 name, the advertisement that was not theirs, the forged settlement call, the
 callback that arrived twice, the late failure notice for a payment already
 captured, the re-priced package that must not rewrite an old receipt, and the
-renewal approved without paying.
+renewal approved without paying; and 50 in `notification_checks.sql`, which
+covers the two things notification systems actually get wrong — telling
+somebody twice, and letting one person read another's post — along with the
+sweep that must not remind daily, a payment message that must never claim
+publication, and a channel with nowhere to send.
 
 `e2e` needs a browser once: `npx playwright install chromium`.
 
@@ -255,6 +278,17 @@ that out.
    to your custom domain once connected.
 4. Deploy, then add your domain under **Settings → Domains** and follow the DNS
    instructions at your registrar.
+
+### Scheduling the notification worker
+
+`vercel.json` calls `/api/cron/send-notifications` hourly, with the same
+`CRON_SECRET` as the expiry sweep. One call does two jobs: it raises the
+expiry reminders that are due, then drains the send queue — including the ones
+just raised. Both are idempotent, so a scheduler that fires twice, overlaps
+itself or retries after a timeout does no harm.
+
+Without the secret the endpoint refuses everything. An endpoint that sends
+email to whoever asks is a spam relay with extra steps.
 
 ### Scheduling the expiry sweep
 
@@ -371,6 +405,54 @@ administrator actions that need a reason and are written to the audit trail with
 both dates or both statuses. Every status change carries a lifecycle event name
 (`expired_automatically`, `expired_manually`, `republished`, …) so the history
 reads as what happened.
+
+### A notification is written with the event; sending it is not
+
+The row that says an advertisement was approved is written by a trigger on the
+same statement that approved it, inside the same transaction — so there is no
+approval that failed to produce a notification, whichever of the several paths
+to approval was taken. The email about it is a queued row in
+`notification_deliveries`, drained afterwards by a worker. A provider that is
+down, slow or misconfigured therefore cannot roll back an approval, fail a
+payment or abort the expiry sweep.
+
+Idempotency is a `dedupe_key` on every notification, unique per user and type,
+with `on conflict do nothing` inside `raise_notification()`. A repeated
+Razorpay webhook, a sweep run twice in a day and a moderator pressing Approve
+on a stale page all write once. The expiring-soon reminder keys on the
+advertisement's expiry *date*, so the hourly job sends one reminder per run —
+and a renewal that moves the date earns a new one, which is a different run
+ending rather than a bug.
+
+Retries are bounded by `notifications.max_attempts` with exponential backoff
+computed in the database, so the worker holds no timing logic. Claiming uses
+`for update skip locked` and pushes `scheduled_at` forward, so two workers
+cannot send the same email and a worker that dies mid-send leaves its rows to
+be retried rather than locked for ever.
+
+### Channels are a choice; the notification centre is not
+
+Preferences are three groups — your advertisements, payments, expiry reminders
+— rather than one switch per type, because three is what somebody actually has
+an opinion about. WhatsApp defaults to off for all of them: a message to
+somebody's telephone is not something to opt them into.
+
+In-app has no switch at all. It is the record of what the office did to your
+advertisement, and a customer who has turned every channel off must still be
+able to find out why theirs was refused.
+
+A channel with nowhere to send — no email address on the account, no telephone
+number — is not queued at all, rather than queued and failed. There is nothing
+for a worker to retry.
+
+### A WhatsApp notification must be an approved template
+
+Meta permits free text only within 24 hours of a customer writing to you, which
+is never the case when an advertisement is approved at ten in the morning.
+`WHATSAPP_TEMPLATE_NAME` is therefore not optional in practice, and a
+configuration without it reports that plainly instead of collecting refusals
+from the provider one message at a time. The template takes three body
+parameters: the advertiser's name, the message, and a link back to this site.
 
 ### Payment is verified on the server, twice over
 
@@ -560,6 +642,7 @@ src/
     layout/                header, footer, mobile nav
     post-ad/               the eight-step form
     lifecycle/             expiry badge and notice, renewal history and form, timeline
+    notifications/         the bell, the mark-all control and the preferences form
     payments/              the checkout panel and the payment status badge
     site/                  the office's own details, shared by those pages
     ui/                    button, badge, container, field, icons, states
@@ -568,6 +651,7 @@ src/
     classifieds/           query parsing, filters, similarity — pure functions
     data/                  data access — public_ads, owner_ads, packages, settings
     lifecycle/             expiry wording in Indian calendar days, dashboard figures
+    notifications/         templates, the two providers, and the queue worker
     payments/              Razorpay client, signatures, order and settlement service, webhook
     post-ad/               schema, state, drafts, file rules, content sniffing
     supabase/              browser, server, anonymous and service-role clients
@@ -580,7 +664,8 @@ supabase/
   seed/                    development-only package rates; NOT a migration
 e2e/                       Playwright, against a production build
   navigation.spec.ts       every link in the header and footer, asked of the server
-  unit/                    pure functions — expiry wording, payment signatures
+  unit/                    pure functions — expiry wording, payment signatures,
+                             notification templates and escaping
   db/                      the admin suite, against a real local database
     harness/               seed, PostgREST launcher, auth gateway, build
 ```
