@@ -331,6 +331,45 @@ begin
   perform public.ok('the renewal remembers the previous run');
 end $$;
 
+-- `standard` carries a price by this point in the run (backend_checks sets
+-- one), and Phase 9 will not extend a run that has not been paid for. The
+-- office's own path is the same one Razorpay takes: settle the payment, then
+-- approve. Both halves are asserted here because the refusal is the guarantee.
+select set_config('test.uid', '1c000000-0000-4000-8000-000000000003', false);
+do $$
+declare
+  ad uuid := public.test_ad_id('Lifecycle A second shop');
+begin
+  begin
+    perform public.moderate_advertisement(ad, 'approve');
+    raise exception 'FAIL: an unpaid renewal extended a run';
+  exception when insufficient_privilege then
+    perform public.ok('a renewal on a priced package cannot be approved until it is paid');
+  end;
+end $$;
+
+reset role;
+select set_config('test.uid', '', false);
+do $$
+declare
+  ad  uuid := public.test_ad_id('Lifecycle A second shop');
+  rid uuid := (select id from public.ad_renewals where ad_id = ad and status = 'pending');
+  n   int;
+begin
+  insert into public.payments (ad_id, user_id, package_id, amount_paise, purpose, renewal_id,
+                               provider, provider_order_id)
+  values (ad, '1a000000-0000-4000-8000-000000000001', 'basic', 1,
+          'renewal', rid, 'razorpay', 'order_lifecycle_renewal');
+
+  select amount_paise into n from public.payments where provider_order_id = 'order_lifecycle_renewal';
+  assert n = 25000, format('the renewal was priced at %s paise, expected the package''s 25000', n);
+  perform public.ok('a renewal is priced from the renewal''s package, not the advertisement''s');
+
+  assert public.settle_payment('razorpay', 'order_lifecycle_renewal', 'pay_lifecycle_renewal', 'sig', 25000) = 'paid';
+  perform public.ok('a verified renewal payment settles');
+end $$;
+
+set role authenticated;
 select set_config('test.uid', '1c000000-0000-4000-8000-000000000003', false);
 do $$
 declare

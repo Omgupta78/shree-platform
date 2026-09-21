@@ -844,8 +844,9 @@ end $$;
 select set_config('test.uid', 'c0000000-0000-4000-8000-000000000003', false);
 do $$
 declare
-  pay uuid := (select id from public.payments limit 1);
-  n   int;
+  pay    uuid := (select id from public.payments limit 1);
+  second uuid;
+  n      int;
 begin
   begin
     update public.payments set status = 'paid' where id = pay;
@@ -860,8 +861,23 @@ begin
   assert n = 1, 'staff could not settle a payment';
   perform public.ok('staff can settle a payment');
 
+  -- Phase 9 makes `paid` terminal but for a refund. That is what makes a
+  -- repeated callback, a second tab and a refresh after payment harmless, so
+  -- the failure-reason rule is now asserted against an attempt that could
+  -- still fail, and the refusal to un-pay is asserted on its own.
   begin
-    update public.payments set status = 'failed', failure_reason = null where id = pay;
+    update public.payments set status = 'failed', failure_reason = 'Card declined.' where id = pay;
+    raise exception 'FAIL: a settled payment was moved to failed';
+  exception when check_violation then
+    perform public.ok('a paid payment cannot be moved to failed by a late message');
+  end;
+
+  insert into public.payments (ad_id, user_id, package_id, amount_paise)
+  select ad_id, user_id, package_id, 1 from public.payments where id = pay
+  returning id into second;
+
+  begin
+    update public.payments set status = 'failed', failure_reason = null where id = second;
     raise exception 'FAIL: a payment failed without a reason';
   exception when check_violation then
     perform public.ok('a failed payment records why it failed');
