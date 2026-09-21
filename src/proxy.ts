@@ -27,6 +27,17 @@ import type { Database } from '@/types/database';
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  /*
+   * The payment provider's webhook carries no session and authenticates
+   * itself, by signature, against a secret this request has no use for.
+   * Sending it through `getUser()` would add a token verification round-trip
+   * to every delivery — and Razorpay retries a webhook it did not get a
+   * prompt answer for, so the round-trip would be paid for twice.
+   */
+  if (pathname === '/api/payments/webhook') {
+    return NextResponse.next();
+  }
+
   if (!isSupabaseConfigured) {
     // Without a database there are no accounts, so a protected page has
     // nothing to protect. It renders its own "not connected" notice.

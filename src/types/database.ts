@@ -10,7 +10,17 @@
 
 export type UserRole = 'user' | 'moderator' | 'admin';
 export type AdKind = 'classified' | 'display';
-export type PaymentStatus = 'created' | 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentStatus =
+  | 'created'
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  /** The advertiser closed the checkout. Not a failure, and told apart from one. */
+  | 'cancelled'
+  | 'refunded';
+
+/** Why an advertiser is being charged. Mirrors `payment_purpose`. */
+export type PaymentPurpose = 'new_advertisement' | 'renewal';
 export type ReportReason =
   | 'spam'
   | 'fraud'
@@ -245,6 +255,7 @@ export interface Database {
           featured_eligible?: boolean;
           sort_order?: number;
           is_active?: boolean;
+          priority?: number;
         };
         Update: Partial<Database['public']['Tables']['packages']['Insert']>;
         Relationships: [];
@@ -301,14 +312,21 @@ export interface Database {
           provider: string | null;
           provider_order_id: string | null;
           provider_payment_id: string | null;
+          provider_signature: string | null;
           failure_reason: string | null;
           paid_at: string | null;
           created_at: string;
           updated_at: string;
+          purpose: PaymentPurpose;
+          renewal_id: string | null;
+          /** The package's name when this was raised. Never read back from `packages`. */
+          package_name: string | null;
+          package_duration_days: number | null;
         };
         /**
-         * `amount_paise`, `user_id` and `package_id` are overwritten by
-         * `stamp_payment_amount()` from the advertisement. They are required
+         * `amount_paise`, `user_id`, `package_id`, `package_name` and
+         * `package_duration_days` are overwritten by `stamp_payment_amount()`
+         * from the advertisement or the renewal. The first four are required
          * here only because the columns are NOT NULL; what is sent is ignored.
          */
         Insert: {
@@ -316,14 +334,43 @@ export interface Database {
           user_id: string;
           package_id: string;
           amount_paise: number;
+          purpose?: PaymentPurpose;
+          renewal_id?: string | null;
           provider?: string | null;
           provider_order_id?: string | null;
         };
+        /**
+         * Status is absent on purpose: it moves only through
+         * `settle_payment()` and `close_payment()`, and the database refuses
+         * it from anyone but the trusted connection regardless.
+         */
         Update: {
           provider?: string | null;
           provider_order_id?: string | null;
-          provider_payment_id?: string | null;
         };
+        Relationships: [];
+      };
+      payment_webhook_events: {
+        Row: {
+          event_id: string;
+          event: string;
+          provider: string;
+          provider_order_id: string | null;
+          provider_payment_id: string | null;
+          payment_id: string | null;
+          outcome: string | null;
+          received_at: string;
+        };
+        Insert: {
+          event_id: string;
+          event: string;
+          provider?: string;
+          provider_order_id?: string | null;
+          provider_payment_id?: string | null;
+          payment_id?: string | null;
+          outcome?: string | null;
+        };
+        Update: { outcome?: string | null };
         Relationships: [];
       };
       ad_reports: {
@@ -401,6 +448,66 @@ export interface Database {
       };
     };
     Views: {
+      /**
+       * An advertiser's own payments. Ownership is the view's WHERE clause,
+       * so no page has a check to forget. The settlement signature is not in
+       * it, here or in `admin_payments`.
+       */
+      my_payments: {
+        Row: {
+          id: string;
+          ad_id: string;
+          renewal_id: string | null;
+          purpose: PaymentPurpose;
+          status: PaymentStatus;
+          amount_paise: number;
+          currency: string;
+          package_id: string;
+          package_name: string | null;
+          package_duration_days: number | null;
+          provider: string | null;
+          provider_payment_id: string | null;
+          failure_reason: string | null;
+          paid_at: string | null;
+          created_at: string;
+          ad_reference: string;
+          ad_title: string;
+          ad_slug: string | null;
+          ad_status: AdStatus;
+        };
+        Relationships: [];
+      };
+      /** The office's ledger. Returns nothing unless `is_staff()`. */
+      admin_payments: {
+        Row: {
+          id: string;
+          ad_id: string;
+          renewal_id: string | null;
+          user_id: string;
+          purpose: PaymentPurpose;
+          status: PaymentStatus;
+          amount_paise: number;
+          currency: string;
+          package_id: string;
+          package_name: string | null;
+          package_duration_days: number | null;
+          provider: string | null;
+          provider_order_id: string | null;
+          provider_payment_id: string | null;
+          failure_reason: string | null;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+          ad_reference: string;
+          ad_title: string;
+          ad_slug: string | null;
+          ad_status: AdStatus;
+          ad_kind: AdKind;
+          user_email: string | null;
+          user_name: string | null;
+        };
+        Relationships: [];
+      };
       category_ad_counts: {
         Row: {
           category_id: string;
@@ -584,6 +691,35 @@ export interface Database {
         Args: { p_from: AdStatus; p_to: AdStatus };
         Returns: boolean;
       };
+      is_permitted_payment_transition: {
+        Args: { p_from: PaymentStatus; p_to: PaymentStatus };
+        Returns: boolean;
+      };
+      /**
+       * Marks a verified payment paid, once. Returns the resulting status, so
+       * settling an already-settled payment is an answer rather than an error.
+       * Trusted connection only — EXECUTE is revoked from `authenticated`.
+       */
+      settle_payment: {
+        Args: {
+          p_provider: string;
+          p_provider_order_id: string;
+          p_payment_id: string;
+          p_signature: string;
+          p_amount_paise?: number | null;
+        };
+        Returns: PaymentStatus;
+      };
+      /** Records a failed or cancelled attempt. A paid payment is left alone. */
+      close_payment: {
+        Args: {
+          p_provider: string;
+          p_provider_order_id: string;
+          p_status: PaymentStatus;
+          p_reason?: string | null;
+        };
+        Returns: PaymentStatus;
+      };
       moderate_advertisement: {
         Args: { p_ad_id: string; p_action: ModerationAction; p_note?: string | null };
         Returns: AdStatus;
@@ -648,3 +784,5 @@ export type ModerationAdRow = Views<'moderation_ads'>;
 export type ModerationReportRow = Views<'moderation_reports'>;
 export type AdminUserRow = Views<'admin_users'>;
 export type AdminActionRow = Views<'admin_actions'>;
+export type MyPaymentRow = Views<'my_payments'>;
+export type AdminPaymentRow = Views<'admin_payments'>;

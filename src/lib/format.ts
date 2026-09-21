@@ -35,6 +35,35 @@ function format(price: number, { compact }: { compact?: boolean }) {
   return compact && price >= 100000 ? compactInr.format(price) : inr.format(price);
 }
 
+const paiseFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Formats an amount held in paise.
+ *
+ * Package prices and payments are integers of the smallest unit, so that money
+ * is never a float and ₹199.00 cannot become ₹198.99999. Only the last step —
+ * showing it to somebody — divides, and it divides for display only.
+ *
+ * Paise are shown in full because this is a receipt: an amount that has been
+ * charged to a card is written out exactly, not rounded to the rupee the way a
+ * listing price is.
+ */
+export function formatPaise(paise: number | null | undefined): string {
+  if (typeof paise !== 'number' || !Number.isFinite(paise)) return '';
+  return paiseFormatter.format(paise / 100);
+}
+
+/** The same amount, rounded to whole rupees, for a price on a package card. */
+export function formatPaiseAsRupees(paise: number | null | undefined): string {
+  if (typeof paise !== 'number' || !Number.isFinite(paise)) return '';
+  return inr.format(Math.round(paise / 100));
+}
+
 const dateFormatter = new Intl.DateTimeFormat('en-IN', {
   day: 'numeric',
   month: 'short',
