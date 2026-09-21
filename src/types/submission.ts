@@ -132,4 +132,13 @@ export interface SubmissionResult {
   reference: string;
   advertisementType: AdvertisementType;
   receivedAt: string;
+  /**
+   * The advertisement's own id, needed to raise a payment against it.
+   *
+   * Absent in the offline demonstration path, where no advertisement exists
+   * to be paid for. The payment step treats its absence as "nothing to pay".
+   */
+  advertisementId?: string;
+  /** True when the chosen package carries a rate to collect. */
+  paymentDue?: boolean;
 }

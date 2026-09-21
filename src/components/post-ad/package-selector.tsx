@@ -3,22 +3,36 @@
 import { usePostAd } from '@/components/post-ad/form-provider';
 import { Badge } from '@/components/ui/badge';
 import { CheckIcon } from '@/components/ui/icons';
-import { AD_PACKAGES, PRICING_CONFIGURED, PRICING_PENDING_NOTE, type AdPackage } from '@/config/packages';
+import { PRICING_PENDING_NOTE, type AdvertisementPackageConfig } from '@/config/packages';
+import { formatPaiseAsRupees } from '@/lib/format';
+import { isChargeable } from '@/lib/payments/amounts';
 import { cn } from '@/lib/utils';
 
 /**
  * Package choice.
  *
- * No prices, because none have been set. Every card says pricing is to be
- * confirmed, and the form sends only the package's id — what a package costs
- * is resolved on the server from the package record, never taken from the
- * browser. A client that could send its own price could send its own
- * discount.
+ * The packages come from the database, with their prices, their run lengths
+ * and their image limits — nothing on these cards is a constant in this file.
+ * That is not tidiness: an office that wants to change what Standard costs, or
+ * how long it runs, changes a row, and the card says the new thing without a
+ * deployment.
+ *
+ * What the form sends is still the package's id and nothing else. The price
+ * shown here is for the advertiser to read; the price charged is read again on
+ * the server from the same table at the moment the order is raised. A client
+ * that could send its own price could send its own discount.
+ *
+ * While a package carries no price — which is all of them, until Shree
+ * Advertising supply their rates — the card says the rate is to be confirmed
+ * rather than showing a zero, and the advertisement goes to the office with
+ * nothing to collect.
  */
-export function PackageSelector() {
+export function PackageSelector({ packages }: { packages: AdvertisementPackageConfig[] }) {
   const { state, dispatch, errorFor } = usePostAd();
   const selected = state.classified.packageId;
   const error = errorFor('packageId');
+
+  const anyPriced = packages.some((item) => isChargeable(item.price));
 
   return (
     <div className="space-y-4" data-step="package">
@@ -27,7 +41,7 @@ export function PackageSelector() {
         aria-label="Advertisement package"
         className="grid gap-4 md:grid-cols-3"
       >
-        {AD_PACKAGES.map((item) => (
+        {packages.map((item) => (
           <PackageCard
             key={item.id}
             item={item}
@@ -42,11 +56,16 @@ export function PackageSelector() {
 
       {error ? <p className="text-sm font-medium text-critical-fg">{error}</p> : null}
 
-      {!PRICING_CONFIGURED ? (
+      {anyPriced ? (
+        <p className="rounded-sm border border-line bg-surface-sunken p-3 text-sm leading-relaxed text-fg-muted">
+          You will be asked to pay once the advertisement has been sent. Payment does not publish an
+          advertisement — every one is read by our office first.
+        </p>
+      ) : (
         <p className="rounded-sm border border-accent-line bg-accent-surface p-3 text-sm leading-relaxed text-accent-fg">
           {PRICING_PENDING_NOTE}
         </p>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -56,10 +75,12 @@ function PackageCard({
   selected,
   onSelect,
 }: {
-  item: AdPackage;
+  item: AdvertisementPackageConfig;
   selected: boolean;
   onSelect: () => void;
 }) {
+  const priced = isChargeable(item.price);
+
   return (
     <label
       data-package={item.id}
@@ -82,25 +103,54 @@ function PackageCard({
         <span className="font-serif text-lg font-semibold">{item.name}</span>
         {selected ? (
           <CheckIcon size={18} className="text-primary" />
-        ) : item.highlighted ? (
-          <Badge tone="featured">Popular</Badge>
+        ) : item.featured ? (
+          <Badge tone="featured">Featured</Badge>
         ) : null}
       </span>
 
       <span className="mt-1 block text-sm text-fg-muted">{item.summary}</span>
 
-      <span className="mt-4 block text-sm font-semibold text-fg-subtle">
-        {item.price === null ? 'Pricing to be configured' : `₹${item.price / 100}`}
+      <span
+        data-price
+        className={cn(
+          'mt-4 block',
+          priced
+            ? 'font-serif text-2xl font-semibold tabular-nums'
+            : 'text-sm font-semibold text-fg-subtle',
+        )}
+      >
+        {priced ? formatPaiseAsRupees(item.price) : 'Rate to be confirmed'}
       </span>
 
       <ul className="mt-4 space-y-1.5 text-sm text-fg-muted">
+        {/*
+          The run length and the image limit come from the same row as the
+          price, so the three cannot drift apart. `usesDefaultDuration` marks a
+          package that has no length of its own and takes the site default —
+          worth saying plainly rather than showing a number whose source the
+          office cannot find when they want to change it.
+        */}
+        <Feature>
+          Runs for <strong className="font-medium tabular-nums">{item.durationDays}</strong> days
+          after approval
+        </Feature>
+        <Feature>
+          Up to <strong className="font-medium tabular-nums">{item.maxImages}</strong>{' '}
+          {item.maxImages === 1 ? 'photograph' : 'photographs'}
+        </Feature>
         {item.features.map((feature) => (
-          <li key={feature} className="flex gap-2">
-            <CheckIcon size={15} className="mt-0.5 shrink-0 text-positive-fg" />
-            {feature}
-          </li>
+          <Feature key={feature}>{feature}</Feature>
         ))}
       </ul>
     </label>
+  );
+}
+
+function Feature({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex gap-2">
+      <CheckIcon size={15} className="mt-0.5 shrink-0 text-positive-fg" />
+      <span>{children}</span>
+    </li>
   );
 }

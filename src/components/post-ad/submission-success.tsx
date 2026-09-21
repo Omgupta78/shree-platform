@@ -1,5 +1,6 @@
 'use client';
 
+import { PaymentPanel } from '@/components/payments/payment-panel';
 import { Button } from '@/components/ui/button';
 import { CheckIcon } from '@/components/ui/icons';
 import { AD_TYPE_BY_ID } from '@/config/ad-types';
@@ -56,6 +57,25 @@ export function SubmissionSuccess({
         </p>
         {type ? <p className="mt-2 text-sm text-fg-muted">{type.name}</p> : null}
       </div>
+
+      {/*
+        Paying for it, when there is anything to pay.
+
+        Whether there is was answered by the server from the price it stamped
+        on the advertisement, rather than by raising an order to find out — so
+        an unpriced package leaves no empty order behind in the ledger. Every
+        package is unpriced until the office supplies rates, so today this
+        does not appear at all.
+
+        The advertisement has been received either way. Payment settles the
+        booking; it is not what makes the submission, and the heading above
+        says so whether or not anything is owed.
+      */}
+      {result.advertisementId && result.paymentDue ? (
+        <div className="mt-8 text-left">
+          <PaymentPanel advertisementId={result.advertisementId} purpose="new_advertisement" />
+        </div>
+      ) : null}
 
       {isDemoReference(result.reference) ? (
         <p className="mt-4 rounded-sm border border-accent-line bg-accent-surface p-3 text-left text-sm leading-relaxed text-accent-fg">

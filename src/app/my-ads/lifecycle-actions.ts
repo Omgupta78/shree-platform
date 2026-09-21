@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { NotSignedInError, requireUser } from '@/lib/auth/session';
 import { isSupabaseConfigured } from '@/lib/env';
 import { renewalMessageFor } from '@/lib/lifecycle/messages';
+import { isChargeable } from '@/lib/payments/amounts';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /**
@@ -25,6 +26,16 @@ export interface RenewalResult {
   message?: string;
   /** 'review' when it went back to the queue, 'live' when it stays up meanwhile. */
   outcome?: 'review' | 'live';
+  /** The renewal just created. A payment is raised against this, not the advertisement. */
+  renewalId?: string;
+  /**
+   * True when the chosen package carries a rate to collect.
+   *
+   * Read from the `packages` row, not from anything the browser sent. The
+   * database refuses to approve a priced renewal that has not been paid for,
+   * so this only decides whether a checkout is offered — it is not the rule.
+   */
+  paymentDue?: boolean;
 }
 
 const inputSchema = z.object({
@@ -53,19 +64,31 @@ export async function requestRenewalAction(input: {
   if (!parsed.success) return { ok: false, message: 'Please choose a package.' };
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('request_renewal', {
+  const { data: renewalId, error } = await supabase.rpc('request_renewal', {
     p_ad_id: parsed.data.advertisementId,
     p_package_id: parsed.data.packageId,
   });
   if (error) return { ok: false, message: renewalMessageFor(error) };
 
-  const { data } = await supabase
-    .from('owner_ads')
-    .select('status')
-    .eq('id', parsed.data.advertisementId)
-    .maybeSingle();
+  const [{ data }, { data: pkg }] = await Promise.all([
+    supabase
+      .from('owner_ads')
+      .select('status')
+      .eq('id', parsed.data.advertisementId)
+      .maybeSingle(),
+    supabase
+      .from('packages')
+      .select('price_paise')
+      .eq('id', parsed.data.packageId)
+      .maybeSingle(),
+  ]);
 
   revalidatePath('/my-ads', 'layout');
   revalidatePath('/admin', 'layout');
-  return { ok: true, outcome: data?.status === 'approved' ? 'live' : 'review' };
+  return {
+    ok: true,
+    outcome: data?.status === 'approved' ? 'live' : 'review',
+    renewalId: renewalId ?? undefined,
+    paymentDue: isChargeable(pkg?.price_paise ?? null),
+  };
 }

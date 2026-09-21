@@ -128,6 +128,8 @@ export async function submitAdvertisement(
 
   return {
     reference: result.reference,
+    advertisementId: result.advertisementId,
+    paymentDue: result.paymentDue ?? false,
     advertisementType: result.advertisementType ?? advertisementType,
     receivedAt: result.receivedAt ?? new Date().toISOString(),
   };

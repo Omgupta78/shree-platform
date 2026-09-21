@@ -2,6 +2,7 @@
 
 import { NotSignedInError, requireUser } from '@/lib/auth/session';
 import { isSupabaseConfigured } from '@/lib/env';
+import { isChargeable } from '@/lib/payments/amounts';
 import {
   classifiedSubmissionSchema,
   displaySubmissionSchema,
@@ -46,6 +47,17 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 export interface SubmitResult {
   ok: boolean;
   reference?: string;
+  /** Needed by the payment step to raise an order against the advertisement. */
+  advertisementId?: string;
+  /**
+   * True when the package carries a rate worth collecting.
+   *
+   * Answered here, from the price the database stamped on the advertisement,
+   * so that the confirmation page can decide whether to offer a checkout
+   * without raising an order to find out. Every package is unpriced until the
+   * office supplies rates, so today this is always false.
+   */
+  paymentDue?: boolean;
   advertisementType?: 'classified' | 'display';
   receivedAt?: string;
   /** `auth` when the answer is "sign in first", so the form can say so. */
@@ -172,7 +184,7 @@ async function submitClassified(
       status: 'pending',
       package_id: submission.packageId,
     })
-    .select('id, reference')
+    .select('id, reference, package_price_paise')
     .single();
 
   if (error || !ad) {
@@ -202,6 +214,8 @@ async function submitClassified(
   return {
     ok: true,
     reference: ad.reference,
+    advertisementId: ad.id,
+    paymentDue: isChargeable(ad.package_price_paise),
     advertisementType: 'classified',
     receivedAt: new Date().toISOString(),
   };
@@ -321,6 +335,11 @@ async function submitDisplay(
   return {
     ok: true,
     reference: ad.reference,
+    advertisementId: ad.id,
+    // A display advertisement carries no package — the office places it by
+    // size and quotes it themselves — so there is never anything to collect
+    // at submission.
+    paymentDue: false,
     advertisementType: 'display',
     receivedAt: new Date().toISOString(),
   };

@@ -12,6 +12,7 @@ import { ContactInformationForm } from '@/components/post-ad/contact-information
 import { DisplayAdForm, DisplayArtworkNotes } from '@/components/post-ad/display-ad-form';
 import { DraftManager, DraftRestoredNotice } from '@/components/post-ad/draft-manager';
 import { PostAdProvider, usePostAd } from '@/components/post-ad/form-provider';
+import type { AdvertisementPackageConfig } from '@/config/packages';
 import { FormProgress } from '@/components/post-ad/form-progress';
 import { ImageUploader } from '@/components/post-ad/image-uploader';
 import { PackageSelector } from '@/components/post-ad/package-selector';
@@ -40,16 +41,16 @@ import { SubmissionError, submitAdvertisement } from '@/lib/post-ad/submit';
  * round trip to the sign-in page and back. `/post-ad` is deliberately absent
  * from the protected routes in `config/navigation.ts` for that reason.
  */
-export function PostAdPage() {
+export function PostAdPage({ packages }: { packages: AdvertisementPackageConfig[] }) {
   return (
     <PostAdProvider>
       <UnsavedChangesGuard />
-      <PostAdFlow />
+      <PostAdFlow packages={packages} />
     </PostAdProvider>
   );
 }
 
-function PostAdFlow() {
+function PostAdFlow({ packages }: { packages: AdvertisementPackageConfig[] }) {
   const { state, dispatch, step, steps } = usePostAd();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [signInNeeded, setSignInNeeded] = useState(false);
@@ -128,7 +129,7 @@ function PostAdFlow() {
           ) : null}
 
           <div className="mt-6">
-            <StepBody />
+            <StepBody packages={packages} />
           </div>
 
           {submitError ? (
@@ -178,7 +179,7 @@ function PostAdFlow() {
 }
 
 /** Which step is on screen. One lookup, no nested conditionals. */
-function StepBody() {
+function StepBody({ packages }: { packages: AdvertisementPackageConfig[] }) {
   const { state, step, dispatch } = usePostAd();
 
   switch (step.id) {
@@ -221,7 +222,7 @@ function StepBody() {
       );
 
     case 'package':
-      return <PackageSelector />;
+      return <PackageSelector packages={packages} />;
 
     case 'preview':
       return (
