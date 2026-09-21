@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
       { source: '/dashboard/expired', destination: '/my-ads/expired', permanent: false },
       { source: '/dashboard/advertisements/:id', destination: '/my-ads/:id', permanent: false },
       { source: '/dashboard/advertisements/:id/renew', destination: '/my-ads/:id/renew', permanent: false },
+      { source: '/dashboard/payments', destination: '/my-ads/payments', permanent: false },
+      { source: '/dashboard/payments/:id', destination: '/my-ads/payments/:id', permanent: false },
     ];
   },
   poweredByHeader: false,

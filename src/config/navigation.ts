@@ -95,16 +95,17 @@ export const ADMIN_NAV: ReadonlyArray<{ heading: string; items: readonly AdminNa
   {
     heading: 'Office',
     items: [
+      { href: '/admin/payments', label: 'Payments', built: true },
       { href: '/admin/reports', label: 'Reports', built: true, badge: 'open_reports' },
       { href: '/admin/activity', label: 'Activity log', built: true },
       { href: '/admin/categories', label: 'Categories', built: true, adminOnly: true },
+      { href: '/admin/packages', label: 'Packages', built: true, adminOnly: true },
       { href: '/admin/users', label: 'Users', built: true, adminOnly: true },
     ],
   },
   {
     heading: 'Later phases',
     items: [
-      { href: '/admin/packages', label: 'Packages', built: false },
       { href: '/admin/editions', label: 'Newspaper editions', built: false },
       { href: '/admin/settings', label: 'Settings', built: false },
     ],

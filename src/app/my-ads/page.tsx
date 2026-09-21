@@ -113,9 +113,14 @@ export default async function MyAdsPage({
               Everything you have sent us, and where each one has got to.
             </p>
           </div>
-          <Button href={ACCOUNT_ACTIONS.post.href} size="sm">
-            {ACCOUNT_ACTIONS.post.label}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button href="/my-ads/payments" size="sm" variant="secondary">
+              Payments
+            </Button>
+            <Button href={ACCOUNT_ACTIONS.post.href} size="sm">
+              {ACCOUNT_ACTIONS.post.label}
+            </Button>
+          </div>
         </header>
 
         <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
