@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { SITE } from '@/config/site';
+import { formatPhone } from '@/lib/format';
 import { Container } from '@/components/ui/container';
 import { GlobeIcon, NewspaperIcon, ShareIcon } from '@/components/ui/icons';
 import type { ComponentType, SVGProps } from 'react';
@@ -81,7 +82,7 @@ export function PrintDigitalSection() {
             Advertise With Shree Classified
           </Button>
           <Button href={`tel:+91${SITE.phones[0]}`} variant="onDark" size="lg">
-            Call {SITE.phones[0]}
+            Call {formatPhone(SITE.phones[0])}
           </Button>
         </div>
       </Container>

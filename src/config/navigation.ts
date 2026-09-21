@@ -27,9 +27,9 @@ const ALL_PRIMARY_NAV: readonly NavLink[] = [
   { href: '/classifieds', label: 'Classifieds', built: true },
   { href: '/categories', label: 'Categories', built: true },
   { href: '/edition', label: "Today's Edition", built: false },
-  { href: '/advertise', label: 'Advertise With Us', built: false },
-  { href: '/about', label: 'About', built: false },
-  { href: '/contact', label: 'Contact', built: false },
+  { href: '/advertise', label: 'Advertise With Us', built: true },
+  { href: '/about', label: 'About', built: true },
+  { href: '/contact', label: 'Contact', built: true },
 ] as const;
 
 const ALL_LEGAL_NAV: readonly NavLink[] = [

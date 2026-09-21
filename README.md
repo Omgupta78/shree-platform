@@ -29,8 +29,8 @@ behind the packages.
 
 ### Pages the navigation promises but does not have yet
 
-`/edition`, `/advertise`, `/about`, `/contact`, `/privacy`, `/terms`,
-`/disclaimer` and `/report`. Each is an entry in `config/navigation.ts` carrying
+`/edition`, `/privacy`, `/terms`, `/disclaimer` and `/report`. Each is an entry
+in `config/navigation.ts` carrying
 `built: false`, which is what keeps it out of the header, the mobile menu and
 the footer — the same treatment the admin sidebar has always given an unbuilt
 section, for the reason written there: a navigation item that 404s teaches
@@ -51,6 +51,9 @@ qualified before they are published.
 | ----- | ---------- |
 | `/` | Home |
 | `/categories` | Category index |
+| `/about` | Who publishes this, and how an advertisement reaches the page |
+| `/advertise` | What can be booked, the packages, and what happens next |
+| `/contact` | The office: address, telephone, WhatsApp, email |
 | `/classifieds` | All advertisements, filtered and sorted from the URL |
 | `/classifieds/[slug]` | A category page, or one advertisement |
 | `/post-ad` | The submission form |
@@ -548,6 +551,8 @@ src/
     api/cron/              the expiry sweep endpoint
     api/payments/          create-order, verify, and Razorpay's webhook
     post-ad/               the submission form and its server action
+    about/, advertise/,    the public information pages, built from config/site.ts,
+    contact/                 app_settings, ad-types and the packages table
   components/
     advertisements/        card, gallery, contact, report modal, view counter
     auth/                  account forms, header actions, sign-in panel
@@ -556,6 +561,7 @@ src/
     post-ad/               the eight-step form
     lifecycle/             expiry badge and notice, renewal history and form, timeline
     payments/              the checkout panel and the payment status badge
+    site/                  the office's own details, shared by those pages
     ui/                    button, badge, container, field, icons, states
   lib/
     auth/                  session reading and the account schemas
