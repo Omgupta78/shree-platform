@@ -1,0 +1,290 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   Shree Classified — design tokens
+
+   Two layers:
+   1. @theme          raw palette + scales. Never referenced directly in JSX.
+   2. @theme inline   semantic tokens (surface, fg, border…) that map to CSS
+                      variables, so light/dark is a variable swap rather than
+                      a `dark:` variant on every element.
+   ========================================================================== */
+
+@theme {
+  /* Warm neutral — the "ink" of a printed page, not a cold blue-grey. */
+  --color-ink-50: #f8f7f5;
+  --color-ink-100: #efedea;
+  --color-ink-200: #dfdbd5;
+  --color-ink-300: #c5bfb6;
+  --color-ink-400: #a09890;
+  --color-ink-500: #7e766d;
+  --color-ink-600: #645d56;
+  --color-ink-700: #4c4741;
+  --color-ink-800: #302c28;
+  --color-ink-900: #1d1b19;
+  --color-ink-950: #121110;
+
+  /* Brand red — a deeper, print-ink version of the masthead red. */
+  --color-brand-50: #fdf4f4;
+  --color-brand-100: #fae4e5;
+  --color-brand-200: #f5cdcf;
+  --color-brand-300: #eda7aa;
+  --color-brand-400: #e0757b;
+  --color-brand-500: #cf4751;
+  --color-brand-600: #b3121b;
+  --color-brand-700: #9a1017;
+  --color-brand-800: #7f1217;
+  --color-brand-900: #6c1418;
+
+  /* Gold — reserved exclusively for paid/featured placements. */
+  --color-gold-100: #fbf0d9;
+  --color-gold-200: #f4dfae;
+  --color-gold-400: #d9a42e;
+  --color-gold-600: #a87615;
+  --color-gold-800: #6d4a0c;
+
+  --color-success-100: #dcf3e4;
+  --color-success-600: #17794a;
+  --color-success-800: #0f5132;
+  --color-whatsapp: #1fa855;
+
+  --color-danger-100: #fbe3e4;
+  --color-danger-600: #b3121b;
+
+  /* Crisp, editorial radii — deliberately not pill-shaped everywhere. */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+
+  --shadow-card: 0 1px 2px rgb(18 17 16 / 0.05), 0 1px 3px rgb(18 17 16 / 0.04);
+  --shadow-raised: 0 4px 14px rgb(18 17 16 / 0.1), 0 1px 3px rgb(18 17 16 / 0.06);
+}
+
+/* Semantic tokens. Components use only these. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-chrome: var(--chrome);
+  --color-chrome-fg: var(--chrome-fg);
+  --color-chrome-muted: var(--chrome-muted);
+  --color-chrome-border: var(--chrome-border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  /* `primary` tints text and links; `primary-solid` fills buttons. They differ
+     in dark mode: readable link text must lighten, while a button fill must
+     stay saturated enough to read as the brand. */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-solid: var(--primary-solid);
+  --color-primary-solid-hover: var(--primary-solid-hover);
+  --color-primary-fg: var(--primary-fg);
+  /* A faint brand tint for a selected card or row. Never for text. */
+  --color-primary-surface: var(--primary-surface);
+  --color-focus: var(--focus);
+
+  /* Status tints. Semantic rather than raw palette values so a notice or a
+     featured badge stays legible in both themes. */
+  --color-accent-surface: var(--accent-surface);
+  --color-accent-line: var(--accent-line);
+  --color-accent-fg: var(--accent-fg);
+  --color-positive-surface: var(--positive-surface);
+  --color-positive-fg: var(--positive-fg);
+  --color-critical-surface: var(--critical-surface);
+  --color-critical-line: var(--critical-line);
+  --color-critical-fg: var(--critical-fg);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, 'Times New Roman', serif;
+  --font-deva: var(--font-plex-deva), var(--font-plex-sans), sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --canvas: #f8f7f5;
+  --surface: #ffffff;
+  --surface-sunken: #efedea;
+  --chrome: #1d1b19;
+  --chrome-fg: #f8f7f5;
+  --chrome-muted: #a09890;
+  --chrome-border: #3a3631;
+  --fg: #1d1b19;
+  --fg-muted: #645d56;
+  --fg-subtle: #726a61;
+  --line: #dfdbd5;
+  --line-strong: #c5bfb6;
+  --primary: #b3121b;
+  --primary-surface: #fdf4f4;
+  --primary-hover: #9a1017;
+  --primary-solid: #b3121b;
+  --primary-solid-hover: #9a1017;
+  --primary-fg: #ffffff;
+  --focus: #b3121b;
+
+  --accent-surface: #fbf0d9;
+  --accent-line: #f4dfae;
+  --accent-fg: #6d4a0c;
+  --positive-surface: #dcf3e4;
+  --positive-fg: #0f5132;
+  --critical-surface: #fdeced;
+  --critical-line: #f5cdcf;
+  --critical-fg: #8f0e15;
+}
+
+/*
+  Dark mode follows the reader's system setting. The values are repeated rather
+  than shared through `light-dark()` so the site still themes correctly on the
+  older Android browsers that are common in the circulation area.
+
+  `[data-theme]` wins over the system preference, ready for an explicit
+  light/dark switch later.
+*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --canvas: #121110;
+    --surface: #1d1b19;
+    --surface-sunken: #171614;
+    --chrome: #0c0b0b;
+    --chrome-fg: #f8f7f5;
+    --chrome-muted: #a09890;
+    --chrome-border: #302c28;
+    --fg: #f8f7f5;
+    --fg-muted: #b3aca3;
+    --fg-subtle: #a09890;
+    --line: #302c28;
+    --line-strong: #4c4741;
+    --primary: #e0757b;
+    --primary-surface: #2a1618;
+    --primary-hover: #eda7aa;
+    --primary-solid: #d0232e;
+    --primary-solid-hover: #e03a45;
+    --primary-fg: #ffffff;
+    --focus: #e0757b;
+
+    --accent-surface: #2b2114;
+    --accent-line: #4a3a1c;
+    --accent-fg: #e8c478;
+    --positive-surface: #13271b;
+    --positive-fg: #8fd3a8;
+    --critical-surface: #2c1416;
+    --critical-line: #4d1f22;
+    --critical-fg: #f0a5a8;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #121110;
+  --surface: #1d1b19;
+  --surface-sunken: #171614;
+  --chrome: #0c0b0b;
+  --chrome-fg: #f8f7f5;
+  --chrome-muted: #a09890;
+  --chrome-border: #302c28;
+  --fg: #f8f7f5;
+  --fg-muted: #b3aca3;
+  --fg-subtle: #a09890;
+  --line: #302c28;
+  --line-strong: #4c4741;
+  --primary: #e0757b;
+  --primary-surface: #2a1618;
+  --primary-hover: #eda7aa;
+  --primary-solid: #d0232e;
+  --primary-solid-hover: #e03a45;
+  --primary-fg: #ffffff;
+  --focus: #e0757b;
+
+  --accent-surface: #2b2114;
+  --accent-line: #4a3a1c;
+  --accent-fg: #e8c478;
+  --positive-surface: #13271b;
+  --positive-fg: #8fd3a8;
+  --critical-surface: #2c1416;
+  --critical-line: #4d1f22;
+  --critical-fg: #f0a5a8;
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+  }
+
+  /* Ad content is frequently written in Hindi. */
+  [lang='hi'],
+  .font-deva {
+    font-family: var(--font-deva);
+  }
+
+  /* One consistent, visible focus ring across the whole app. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-200);
+    color: var(--color-ink-900);
+  }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Visible only to screen readers, until focused. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .line-clamp-2-safe {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+}
