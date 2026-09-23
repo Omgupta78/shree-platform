@@ -803,6 +803,11 @@ export interface Database {
         Returns: undefined;
       };
       prune_search_events: { Args: Record<string, never>; Returns: number };
+      consume_rate_limit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number };
+        Returns: boolean;
+      };
+      prune_rate_limits: { Args: Record<string, never>; Returns: number };
       log_report_export: {
         Args: { p_report: string; p_from: string; p_to: string; p_rows: number };
         Returns: undefined;

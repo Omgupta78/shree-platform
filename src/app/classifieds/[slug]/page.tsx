@@ -310,10 +310,7 @@ function AdvertisementJsonLd({ advertisement }: { advertisement: Advertisement }
     };
   }
 
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
-  );
+  // Through `JsonLd`, which escapes the characters that would end the script
+  // element early. `name` and `description` are the advertiser's own words.
+  return <JsonLd data={data} />;
 }

@@ -33,55 +33,54 @@ export function BusinessInfoSection() {
             </p>
           </div>
 
+          {/*
+            `<dl>` may contain a `<div>` wrapping each term-and-definition pair,
+            but only one level of it — a `<div>` inside that `<div>` makes the
+            `<dt>` no longer a child of the group, and a screen reader stops
+            announcing the pairs as a list. So the icon sits inside the `<dt>`
+            beside its label rather than in a column of its own.
+          */}
           <dl className="divide-y divide-line rounded-lg border border-line bg-surface">
-            <div className="flex gap-3 p-5">
-              <MapPinIcon size={18} className="mt-0.5 shrink-0 text-fg-subtle" />
-              <div>
-                <dt className="text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
-                  Office
-                </dt>
-                <dd className="mt-1 text-sm">{SITE.address}</dd>
-              </div>
+            <div className="p-5">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
+                <MapPinIcon size={16} className="shrink-0" />
+                Office
+              </dt>
+              <dd className="mt-1 text-sm">{SITE.address}</dd>
             </div>
 
-            <div className="flex gap-3 p-5">
-              <PhoneIcon size={18} className="mt-0.5 shrink-0 text-fg-subtle" />
-              <div>
-                <dt className="text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
-                  Telephone
-                </dt>
-                <dd className="mt-1 space-x-3 text-sm">
-                  {SITE.phones.map((phone) => (
-                    <a key={phone} href={telHref(phone)} className="hover:text-primary">
-                      {formatPhone(phone)}
-                    </a>
-                  ))}
-                </dd>
-              </div>
-            </div>
-
-            <div className="flex gap-3 p-5">
-              <MailIcon size={18} className="mt-0.5 shrink-0 text-fg-subtle" />
-              <div>
-                <dt className="text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
-                  Email
-                </dt>
-                <dd className="mt-1 text-sm">
-                  <a href={`mailto:${SITE.email}`} className="hover:text-primary">
-                    {SITE.email}
+            <div className="p-5">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
+                <PhoneIcon size={16} className="shrink-0" />
+                Telephone
+              </dt>
+              <dd className="mt-1 space-x-3 text-sm">
+                {SITE.phones.map((phone) => (
+                  <a key={phone} href={telHref(phone)} className="hover:text-primary">
+                    {formatPhone(phone)}
                   </a>
-                </dd>
-              </div>
+                ))}
+              </dd>
             </div>
 
-            <div className="flex gap-3 p-5">
-              <GlobeIcon size={18} className="mt-0.5 shrink-0 text-fg-subtle" />
-              <div>
-                <dt className="text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
-                  Website
-                </dt>
-                <dd className="mt-1 text-sm">{SITE.website}</dd>
-              </div>
+            <div className="p-5">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
+                <MailIcon size={16} className="shrink-0" />
+                Email
+              </dt>
+              <dd className="mt-1 text-sm">
+                <a href={`mailto:${SITE.email}`} className="hover:text-primary">
+                  {SITE.email}
+                </a>
+              </dd>
+            </div>
+
+            <div className="p-5">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] text-fg-subtle uppercase">
+                <GlobeIcon size={16} className="shrink-0" />
+                Website
+              </dt>
+              <dd className="mt-1 text-sm">{SITE.website}</dd>
             </div>
           </dl>
         </div>

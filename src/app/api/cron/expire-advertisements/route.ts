@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { isSupabaseConfigured } from '@/lib/env';
+import { logEvent, logFailure } from '@/lib/security/log';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -50,11 +51,17 @@ async function run(request: Request) {
   const { data, error } = await supabase.rpc('expire_advertisements');
   if (error) {
     // The detail stays in the server log; the caller learns only that it failed.
-    console.error('expire_advertisements failed', error.message);
+    logFailure('cron.expire_advertisements_failed', { reason: error.message });
     return NextResponse.json({ ok: false, error: 'sweep failed' }, { status: 500 });
   }
   const { data: pruned, error: pruneError } = await supabase.rpc('prune_search_events');
-  if (pruneError) console.error('prune_search_events failed', pruneError.message);
+  if (pruneError) logFailure('cron.prune_search_events_failed', { reason: pruneError.message });
+
+  // Rate-limit buckets are rubbish once their window has closed.
+  const { error: limitError } = await supabase.rpc('prune_rate_limits');
+  if (limitError) logFailure('cron.prune_rate_limits_failed', { reason: limitError.message });
+
+  logEvent('cron.sweep_completed', { expired: Number(data ?? 0) });
 
   return NextResponse.json({
     ok: true,

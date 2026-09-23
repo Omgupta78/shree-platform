@@ -28,6 +28,12 @@ function pageNumbers(current: number, total: number): (number | 'gap')[] {
   return out;
 }
 
+/*
+ * A disabled step is dimmed by colour alone, not by opacity.
+ * `opacity-50` over `text-fg-subtle` produced 1.99:1 against the page, which
+ * is below the point at which text is legible at all; the colour on its own
+ * gives 4.97:1 and still reads as unavailable next to the live controls.
+ */
 const LINK =
   'inline-flex h-10 min-w-10 items-center justify-center rounded-sm border px-3 text-sm font-medium transition-colors';
 
@@ -55,7 +61,7 @@ export function Pagination({
               Previous
             </Link>
           ) : (
-            <span aria-hidden="true" className={cn(LINK, 'border-line text-fg-subtle opacity-50')}>
+            <span aria-hidden="true" className={cn(LINK, 'border-line text-fg-subtle')}>
               Previous
             </span>
           )}
@@ -95,7 +101,7 @@ export function Pagination({
               Next
             </Link>
           ) : (
-            <span aria-hidden="true" className={cn(LINK, 'border-line text-fg-subtle opacity-50')}>
+            <span aria-hidden="true" className={cn(LINK, 'border-line text-fg-subtle')}>
               Next
             </span>
           )}

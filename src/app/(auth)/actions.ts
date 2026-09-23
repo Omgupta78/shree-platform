@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { isSupabaseConfigured, siteUrl } from '@/lib/env';
+import { logSecurityEvent } from '@/lib/security/log';
+import { checkRateLimit } from '@/lib/security/rate-limit';
 import {
   forgotPasswordSchema,
   safeRedirect,
@@ -38,6 +40,9 @@ const NOT_CONFIGURED: AuthFormState = {
  * Distinguishing them turns the sign-in form into a way of asking whether a
  * given person has registered.
  */
+const RESET_SENT =
+  'If that address has an account, a link to set a new password is on its way. The link is good for one hour.';
+
 const SIGN_IN_FAILED = 'That email address and password do not match an account.';
 
 export async function signInAction(
@@ -54,9 +59,20 @@ export async function signInAction(
     return { status: 'error', fieldErrors: collectErrors(parsed.error) };
   }
 
+  /*
+   * Checked AFTER the shape of the form but BEFORE the password is tried, so
+   * a script cannot spend our attempts on malformed requests, and cannot use
+   * the response time to tell a real address from a made-up one.
+   */
+  const limit = await checkRateLimit('signIn');
+  if (!limit.allowed) return { status: 'error', message: limit.message };
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  if (error) return { status: 'error', message: SIGN_IN_FAILED };
+  if (error) {
+    logSecurityEvent('auth.sign_in_failed', { reason: 'invalid_credentials' });
+    return { status: 'error', message: SIGN_IN_FAILED };
+  }
 
   revalidatePath('/', 'layout');
   return {
@@ -80,6 +96,9 @@ export async function signUpAction(
   if (!parsed.success) {
     return { status: 'error', fieldErrors: collectErrors(parsed.error) };
   }
+
+  const limit = await checkRateLimit('signUp');
+  if (!limit.allowed) return { status: 'error', message: limit.message };
 
   const { email, password, fullName, phone } = parsed.data;
   const supabase = await createSupabaseServerClient();
@@ -126,6 +145,20 @@ export async function forgotPasswordAction(
     return { status: 'error', fieldErrors: collectErrors(parsed.error) };
   }
 
+  /*
+   * This is the one endpoint that sends mail to an address somebody else
+   * chose, so it is the one worth being strict about: without a limit it is a
+   * way to have our domain deliver repeated mail to a stranger.
+   *
+   * The refusal is worded the same as the success, so a script cannot use the
+   * difference to find out which addresses have accounts.
+   */
+  const limit = await checkRateLimit('passwordReset');
+  if (!limit.allowed) {
+    logSecurityEvent('auth.password_reset_rate_limited');
+    return { status: 'done', message: RESET_SENT };
+  }
+
   const supabase = await createSupabaseServerClient();
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent('/update-password')}`,
@@ -133,11 +166,7 @@ export async function forgotPasswordAction(
 
   // The same answer whether or not the address has an account, for the same
   // reason the sign-in message is vague.
-  return {
-    status: 'done',
-    message:
-      'If that address has an account, a link to set a new password is on its way. The link is good for one hour.',
-  };
+  return { status: 'done', message: RESET_SENT };
 }
 
 export async function updatePasswordAction(

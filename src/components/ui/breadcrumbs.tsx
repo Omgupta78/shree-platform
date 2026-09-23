@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { serialiseJsonLd } from '@/lib/seo/jsonld';
+
 export interface Crumb {
   label: string;
   /** Omitted on the final crumb, which is the current page. */
@@ -50,7 +52,7 @@ export function Breadcrumbs({ items, baseUrl }: { items: Crumb[]; baseUrl?: stri
       {jsonLd ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serialiseJsonLd(jsonLd) }}
         />
       ) : null}
     </>

@@ -17,16 +17,41 @@ import type { OfficeDetails } from '@/lib/data/settings';
  * Nothing has a default that invents a fact.
  */
 
+/**
+ * Serialises a JSON-LD payload for safe embedding in a `<script>` element.
+ *
+ * `JSON.stringify` escapes quotes and backslashes. It does NOT escape `<`, `>`
+ * or `&` — so a value containing the characters `</script>` ends the script
+ * element early and everything after it is parsed as HTML. Every one of these
+ * payloads carries text an advertiser typed: a title, a description, a
+ * breadcrumb. An advertisement titled
+ *
+ *   Flat for rent </script><script>…</script>
+ *
+ * would therefore have run whatever followed, on the public page, for every
+ * visitor. Titles are not restricted to a character set, and should not be —
+ * `<` is a legitimate thing to type. The escaping belongs at the point of
+ * output, which is here.
+ *
+ * U+2028 and U+2029 are escaped as well. They are valid inside a JSON string
+ * but are line terminators in JavaScript source, so an unescaped one turns the
+ * block into a syntax error.
+ */
+export function serialiseJsonLd(data: Record<string, unknown>): string {
+  return JSON.stringify(data)
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026')
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029');
+}
+
 /** Renders one JSON-LD block. */
 export function JsonLd({ data }: { data: Record<string, unknown> }) {
   return (
     <script
       type="application/ld+json"
-      // The payload is built from our own data, and JSON.stringify escapes it.
-      // The one character that still matters inside a <script> is the closing
-      // angle bracket of a </script> sequence, which cannot appear in JSON
-      // string output except as part of a value — so it is escaped here.
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replaceAll('<', '\\u003c') }}
+      dangerouslySetInnerHTML={{ __html: serialiseJsonLd(data) }}
     />
   );
 }

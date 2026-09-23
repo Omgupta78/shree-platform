@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 
+import { securityHeaders } from './src/lib/security/headers';
+
 const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
   : undefined;
@@ -31,6 +33,16 @@ const nextConfig: NextConfig = {
     ];
   },
   poweredByHeader: false,
+
+  /*
+   * Security headers on every route, so a page added later gets them without
+   * anybody remembering to. What each one is for is in
+   * `src/lib/security/headers.ts`, including an honest note about the one
+   * compromise in the content policy.
+   */
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders(supabaseHost) }];
+  },
   images: {
     // Ad images are served from Supabase Storage; the host is derived from env
     // so nothing environment-specific is hardcoded here.

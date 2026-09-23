@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { getCurrentUser } from '@/lib/auth/session';
 import { isSupabaseConfigured } from '@/lib/env';
+import { checkRateLimit } from '@/lib/security/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /**
@@ -45,6 +46,13 @@ export async function reportAdvertisementAction(input: {
       message: 'Reporting is not available yet on this installation.',
     };
   }
+
+  /*
+   * Abuse here is one person flooding the moderation queue, which costs the
+   * office real time. Ten an hour is far more than a reader ever files.
+   */
+  const limit = await checkRateLimit('reportAdvertisement');
+  if (!limit.allowed) return { ok: false, message: limit.message };
 
   const parsed = reportSchema.safeParse(input);
   if (!parsed.success) {
@@ -135,6 +143,12 @@ export async function recordSearchAction(input: {
 
   const parsed = searchSchema.safeParse(input);
   if (!parsed.success) return;
+
+  // Generous: this fires once per search a person actually makes. It is here
+  // so a script cannot fill the search log, which the office reads to decide
+  // what the site is missing.
+  const limit = await checkRateLimit('recordSearch');
+  if (!limit.allowed) return;
 
   const supabase = await createSupabaseServerClient();
 

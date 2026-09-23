@@ -13,7 +13,7 @@ for f in "$here"/supabase/test/_local_shim.sql "$here"/supabase/migrations/*.sql
 done
 
 status=0
-for suite in rls_checks backend_checks moderation_checks lifecycle_checks payment_checks notification_checks analytics_checks; do
+for suite in rls_checks backend_checks moderation_checks lifecycle_checks payment_checks notification_checks analytics_checks security_checks; do
   echo
   echo "── $suite"
   if ! psql -v ON_ERROR_STOP=1 -d "$DB" -f "$here/supabase/test/$suite.sql" 2>&1 \

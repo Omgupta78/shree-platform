@@ -217,7 +217,7 @@ promoting a user normally requires an existing administrator.
 | `npm run verify` | Typecheck, lint, build and end-to-end, in that order |
 
 `db:test` needs a local Postgres 16 and `psql`; it never touches Supabase. It
-applies every migration to a scratch database and runs **372 assertions**: 22 in
+applies every migration to a scratch database and runs **386 assertions**: 22 in
 `rls_checks.sql` from Phase 1, 103 in `backend_checks.sql` covering the ten
 escalation attacks, consent, payments, reports, favourites, the audit trail,
 storage paths, slug issuance and reference format, and 60 in
@@ -244,16 +244,24 @@ then plans against. It also asserts the two refusals that matter: an advertiser
 sees no figure at all, and a moderator sees the queue but not the money. It
 ends by proving the audit revoke described below is real: an advertiser can
 write neither through `write_audit()` nor through the guarded shim, and an
-export by an administrator does reach the trail.
+export by an administrator does reach the trail; and 14 in
+`security_checks.sql`, which asserts the rate limiter at its boundary — the
+request that is still allowed and the very next one that is not — that one
+caller's limit does not affect another's, that a closed window starts the count
+again from one, and that nobody can read or reset their own counter.
 
-`e2e` runs 157 checks against a production build. Beyond the pure-function
+`e2e` runs 194 checks against a production build. Beyond the pure-function
 suites, `navigation.spec.ts` walks every link in the header and footer, and
 `seo.spec.ts` reads the served HTML: that each public page carries its own
 title, description, canonical, Open Graph and Twitter card; that the JSON-LD
 parses and invents no rating, opening hours or coordinates; that a filtered
 view is `noindex` while page two is not; that a missing advertisement answers a
 real 404; that every URL in the sitemap resolves; and that no share card
-carries an advertiser's telephone number.
+carries an advertiser's telephone number. `security.spec.ts` checks the
+headers and that the content policy does not break any page;
+`accessibility.spec.ts` runs axe-core at WCAG 2.1 AA over nine pages and an
+advertisement page, with keyboard and heading-structure checks beside it; and
+`mobile.spec.ts` asserts no horizontal overflow at 360, 414, 768 and 1280 px.
 
 `e2e` needs a browser once: `npx playwright install chromium`.
 
@@ -661,6 +669,61 @@ return is prefixed with an apostrophe: this export carries text the public typed
 and a search term beginning `=HYPERLINK(...)` would otherwise become a live
 formula in the office's spreadsheet.
 
+### The escaping that stands between an advertiser and a script block
+
+`JSON.stringify` escapes quotes and backslashes and nothing else. Two JSON-LD
+emitters wrote its output straight into a `<script>` element, so an
+advertisement titled
+
+    Flat for rent </script><script>…</script>
+
+ended the script element early and had the rest parsed as HTML — stored
+cross-site scripting on the public advertisement page, reachable by anyone who
+could submit an advertisement. Titles deliberately allow `<`, because it is a
+legitimate character to type, so the fix belongs at output:
+`serialiseJsonLd()` escapes `<`, `>`, `&` and the two line separators that are
+valid in JSON but terminate a JavaScript string. Every JSON-LD block in the
+application goes through it, and `e2e/unit/security.spec.ts` proves both that
+the dangerous sequences cannot survive and that parsing the output returns
+exactly what went in.
+
+### Rate limiting lives in Postgres, and stores no addresses
+
+The obvious rate limiter is a counter in memory. On a serverless host it is
+close to useless — every instance keeps its own, instances come and go between
+requests, and requests sent in parallel are spread across instances that each
+see a handful. It looks like protection in a code review and stops nobody.
+
+So the counter is a table, because the database is the one thing every instance
+shares, and consuming a unit is a single atomic statement: two simultaneous
+requests get 1 and 2, never 1 and 1. The caller's address is hashed with a
+server-side salt before a key is built, so `rate_limits` holds opaque strings
+and cannot be read back as "who tried to sign in on Tuesday".
+
+Every limit is set where a person will never reach it. The failure that matters
+is not "an attacker got through" but "somebody in an internet café could not
+sign in because a stranger on the same address already had". The limiter also
+fails **open**: if the database is unreachable the request is allowed, because a
+limiter that becomes an outage has done more damage than the abuse it guarded
+against.
+
+### The content policy, and its one honest compromise
+
+`script-src` includes `'unsafe-inline'`. A nonce-based policy is stricter and is
+what Next.js documents, but a nonce can only be injected during server
+rendering — so every statically rendered page would receive a policy naming a
+nonce its already-built HTML does not carry, and every script on it would be
+blocked. The alternative is making the whole site dynamic, which costs real
+speed on exactly the pages search engines fetch most.
+
+This is defence in depth rather than the last line. The last line is that the
+application renders no user-supplied HTML anywhere, and the one place user text
+enters a `<script>` is the JSON-LD serialiser described above. `frame-ancestors
+'none'`, `object-src 'none'`, `base-uri 'self'` and `form-action 'self'` are
+unconditional. `e2e/security.spec.ts` asserts the headers are present AND that
+no page is broken by them — a policy that silently blocks one script is the
+failure mode worth testing for.
+
 ### Every indexable page states its own address
 
 `lib/seo/metadata.ts` builds the title, description, canonical URL, Open Graph
@@ -863,6 +926,7 @@ src/
     ui/                    button, badge, container, field, icons, states
   lib/
     analytics/             ranges in the office's own day, the queries, the report registry
+    security/              headers and the content policy, rate limits, structured logging
     seo/                   metadata and JSON-LD builders, indexing policy, landings, audit
     auth/                  session reading and the account schemas
     classifieds/           query parsing, filters, similarity — pure functions
@@ -883,6 +947,10 @@ e2e/                       Playwright, against a production build
   navigation.spec.ts       every link in the header and footer, asked of the server
   seo.spec.ts              the tags a search engine actually receives, read from
                              served HTML: canonicals, JSON-LD, status codes, sitemaps
+  security.spec.ts         the headers, and whether the policy they carry lets
+                             the site work
+  accessibility.spec.ts    axe-core at WCAG 2.1 AA, plus keyboard and headings
+  mobile.spec.ts           horizontal overflow at four widths, tap targets, inputs
   unit/                    pure functions — expiry wording, payment signatures,
                              notification templates and escaping, date ranges,
                              the CSV, and which listing URLs ask to be indexed

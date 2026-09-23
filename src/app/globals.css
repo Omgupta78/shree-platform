@@ -46,7 +46,11 @@
   --color-success-100: #dcf3e4;
   --color-success-600: #17794a;
   --color-success-800: #0f5132;
-  --color-whatsapp: #1fa855;
+  /* WhatsApp's green, darkened from #1fa855 until white text on it reaches
+     4.82:1. The brand value gives 3.09:1, which fails AA for body text — and
+     this is a button whose label people have to read. Still unmistakably the
+     WhatsApp green. */
+  --color-whatsapp: #17833f;
 
   --color-danger-100: #fbe3e4;
   --color-danger-600: #b3121b;

@@ -2,6 +2,7 @@
 
 import { NotSignedInError, requireUser } from '@/lib/auth/session';
 import { isSupabaseConfigured } from '@/lib/env';
+import { checkRateLimit } from '@/lib/security/rate-limit';
 import { isChargeable } from '@/lib/payments/amounts';
 import {
   classifiedSubmissionSchema,
@@ -89,6 +90,17 @@ export async function submitAdvertisementAction(formData: FormData): Promise<Sub
       };
     }
     throw error;
+  }
+
+  /*
+   * Deliberately loose — twenty an hour. Somebody correcting an advertisement
+   * the office sent back may genuinely submit several times in an afternoon,
+   * and refusing them would be a telephone call to the office. This is here
+   * for the script that submits a thousand, not for a person in a hurry.
+   */
+  const limit = await checkRateLimit('postAdvertisement');
+  if (!limit.allowed) {
+    return { ok: false, code: 'unavailable', message: limit.message };
   }
 
   const raw = formData.get('payload');

@@ -99,10 +99,10 @@ export function SignInForm({ next }: { next: string }) {
       <Submit pending={pending}>Sign in</Submit>
 
       <div className="flex flex-wrap justify-between gap-2 text-sm">
-        <Link href="/forgot-password" className="text-primary-fg underline underline-offset-2">
+        <Link href="/forgot-password" className="text-primary underline underline-offset-2">
           Forgotten your password?
         </Link>
-        <Link href="/sign-up" className="text-primary-fg underline underline-offset-2">
+        <Link href="/sign-up" className="text-primary underline underline-offset-2">
           Create an account
         </Link>
       </div>
@@ -160,7 +160,7 @@ export function SignUpForm({ next }: { next: string }) {
 
       <p className="text-sm text-fg-muted">
         Already have an account?{' '}
-        <Link href="/sign-in" className="text-primary-fg underline underline-offset-2">
+        <Link href="/sign-in" className="text-primary underline underline-offset-2">
           Sign in
         </Link>
         .
@@ -193,7 +193,7 @@ export function ForgotPasswordForm() {
       )}
 
       <p className="text-sm text-fg-muted">
-        <Link href="/sign-in" className="text-primary-fg underline underline-offset-2">
+        <Link href="/sign-in" className="text-primary underline underline-offset-2">
           Back to sign in
         </Link>
       </p>

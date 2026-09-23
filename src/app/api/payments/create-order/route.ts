@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { isSupabaseConfigured } from '@/lib/env';
 import { createPaymentOrder } from '@/lib/payments/service';
+import { checkRateLimit } from '@/lib/security/rate-limit';
 
 /**
  * Raises the order a checkout is opened against.
@@ -42,6 +43,17 @@ export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ ok: false, message: GENERIC }, { status: 400 });
+  }
+
+  /*
+   * Every order costs a call to Razorpay, so this is limited before the call
+   * is made. It is keyed on the signed-in account rather than the address:
+   * opening a checkout requires a session, and counting by account means two
+   * advertisers in one office do not share an allowance.
+   */
+  const limit = await checkRateLimit('paymentOrder');
+  if (!limit.allowed) {
+    return NextResponse.json({ ok: false, message: limit.message }, { status: 429 });
   }
 
   const { advertisementId, purpose, renewalId } = parsed.data;
