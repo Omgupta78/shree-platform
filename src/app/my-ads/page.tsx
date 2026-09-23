@@ -13,7 +13,14 @@ import { EmptyState } from '@/components/ui/states';
 import { ACCOUNT_ACTIONS } from '@/config/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getLifecycleSettings } from '@/lib/data/lifecycle-settings';
-import { getMyAdvertisements, STATUS_COPY, type MyAdvertisement } from '@/lib/data/my-ads';
+import {
+  OWNER_PAGE_SIZE,
+  getMyAdvertisements,
+  getMyAdvertisementStates,
+  getMyAdvertisementsByIds,
+  STATUS_COPY,
+  type MyAdvertisement,
+} from '@/lib/data/my-ads';
 import { isSupabaseConfigured } from '@/lib/env';
 import { formatRelative } from '@/lib/format';
 import {
@@ -53,6 +60,8 @@ export default async function MyAdsPage({
 }) {
   const params = await searchParams;
   const turnedAway = params.error === 'not-staff';
+  const requested = Number(Array.isArray(params.page) ? params.page[0] : params.page);
+  const pageNumber = Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 1;
 
   if (!isSupabaseConfigured) {
     return (
@@ -71,24 +80,39 @@ export default async function MyAdsPage({
     );
   }
 
-  const [advertisements, settings] = await Promise.all([
-    getMyAdvertisements(),
+  /*
+   * Three reads, and the split between them is the point.
+   *
+   * `allStates` is every advertisement the advertiser has, as three small
+   * columns — enough for `expiryState()` and therefore enough for the six
+   * figures above the list. The list itself is paged. Counting from the page
+   * instead would turn "you have 60 advertisements" into "you have 20" as soon
+   * as somebody had more than one page of them.
+   */
+  const [allStates, listing, settings] = await Promise.all([
+    getMyAdvertisementStates(),
+    getMyAdvertisements({ index: pageNumber - 1, size: OWNER_PAGE_SIZE }),
     getLifecycleSettings(),
   ]);
+
   // One "now" for the whole page, so a row and the count above it can never
   // disagree about whether something has expired.
   const now = new Date();
-  const states = new Map(
-    advertisements.map((ad) => [
-      ad.id,
-      expiryState(ad.expiresAt, ad.status, settings.expiringSoonDays, now),
-    ]),
-  );
-  const summary = summariseMyAdvertisements(advertisements, states);
-  const expiringSoon = advertisements.filter((ad) => {
-    const state = states.get(ad.id);
-    return state ? isExpiringSoon(state) : false;
-  });
+  const stateFor = (ad: { id: string; status: MyAdvertisement['status']; expiresAt: string | null }) =>
+    expiryState(ad.expiresAt, ad.status, settings.expiringSoonDays, now);
+
+  const states = new Map(allStates.map((ad) => [ad.id, stateFor(ad)]));
+  const summary = summariseMyAdvertisements(allStates, states);
+
+  // Expiring soon is a band above the list and is deliberately not paged: it
+  // is bounded by the window itself, not by how much somebody has advertised.
+  const expiringSoonIds = allStates
+    .filter((ad) => isExpiringSoon(states.get(ad.id) ?? stateFor(ad)))
+    .map((ad) => ad.id);
+  const expiringSoon = await getMyAdvertisementsByIds(expiringSoonIds);
+
+  const advertisements = listing.rows;
+  const pageCount = Math.max(1, Math.ceil(listing.total / OWNER_PAGE_SIZE));
 
   return (
     <Container className="py-8 sm:py-10">
@@ -167,16 +191,57 @@ export default async function MyAdsPage({
               action={ACCOUNT_ACTIONS.post}
             />
           ) : (
-            <ul className="space-y-4">
-              {advertisements.map((advertisement) => (
-                <li key={advertisement.id}>
-                  <AdvertisementRow
-                    advertisement={advertisement}
-                    state={states.get(advertisement.id)!}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-4">
+                {advertisements.map((advertisement) => (
+                  <li key={advertisement.id}>
+                    <AdvertisementRow
+                      advertisement={advertisement}
+                      state={states.get(advertisement.id)!}
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              {/*
+                Only once there is a second page. An advertiser with four
+                advertisements should never see paging controls at all.
+              */}
+              {pageCount > 1 ? (
+                <nav
+                  aria-label="Pages of your advertisements"
+                  className="mt-6 flex items-center justify-between gap-3 border-t border-line pt-4 text-sm"
+                >
+                  {pageNumber > 1 ? (
+                    <Link
+                      href={`/my-ads?page=${pageNumber - 1}`}
+                      rel="prev"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      ← Newer
+                    </Link>
+                  ) : (
+                    <span className="text-fg-subtle">← Newer</span>
+                  )}
+
+                  <span className="text-fg-muted tabular-nums">
+                    Page {pageNumber} of {pageCount}
+                  </span>
+
+                  {pageNumber < pageCount ? (
+                    <Link
+                      href={`/my-ads?page=${pageNumber + 1}`}
+                      rel="next"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Older →
+                    </Link>
+                  ) : (
+                    <span className="text-fg-subtle">Older →</span>
+                  )}
+                </nav>
+              ) : null}
+            </>
           )}
         </div>
       </div>

@@ -29,18 +29,41 @@ export interface PaymentFilters {
   query?: string | null;
 }
 
-/** An advertiser's own payments, newest first. */
-export async function getUserPayments(): Promise<MyPaymentRow[]> {
-  if (!isSupabaseConfigured) return [];
+export const OWNER_PAYMENTS_PAGE_SIZE = 25;
+
+export interface MyPaymentPage {
+  rows: MyPaymentRow[];
+  /** Every payment the caller has, not merely those on this page. */
+  total: number;
+}
+
+/**
+ * One page of an advertiser's own payments, newest first.
+ *
+ * `my_payments` filters on the caller inside the database, so there is no user
+ * id in this function and nothing to pass one to. Paging changes how many rows
+ * come back and nothing about whose they are.
+ *
+ * Ranged with `.range()`, the same as `getAdminPayments` directly below and
+ * the public browse. Before Phase 13 this read every payment an advertiser had
+ * ever made; bounded by their own activity, but unbounded in the sense that
+ * nothing stopped it growing for ever.
+ */
+export async function getUserPayments(
+  page = { index: 0, size: OWNER_PAYMENTS_PAGE_SIZE },
+): Promise<MyPaymentPage> {
+  if (!isSupabaseConfigured) return { rows: [], total: 0 };
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const from = page.index * page.size;
+  const { data, error, count } = await supabase
     .from('my_payments')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, from + page.size - 1);
 
-  if (error || !data) return [];
-  return data;
+  if (error || !data) return { rows: [], total: 0 };
+  return { rows: data, total: count ?? data.length };
 }
 
 /** One of the advertiser's own payments, or null — including when it is not theirs. */

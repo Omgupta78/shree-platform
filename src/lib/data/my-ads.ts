@@ -63,21 +63,116 @@ type Row = Pick<
   | 'category_name'
 >;
 
-export const getMyAdvertisements = cache(async (): Promise<MyAdvertisement[]> => {
-  const supabase = await createSupabaseServerClient();
+/**
+ * One page of an advertiser's own advertisements.
+ *
+ * Paged with `.range()`, the same way `getAdminPayments` and the public browse
+ * are. Before Phase 13 this read every row an advertiser had ever posted, and
+ * then asked for the cover image and the pending renewal of every one of them
+ * in two `IN (...)` lists built from that set. Bounded by one person's own
+ * activity, so never a denial-of-service surface — but a business advertising
+ * weekly for three years would have been fetching hundreds of rows and two
+ * hundred-element IN lists to render twenty cards.
+ *
+ * The counts above the list are NOT derived from this. They come from
+ * `getMyAdvertisementStates()`, so paging the list cannot quietly turn "you
+ * have 60 advertisements" into "you have 20".
+ */
+export const OWNER_PAGE_SIZE = 20;
 
+export interface MyAdvertisementPage {
+  rows: MyAdvertisement[];
+  /** Every advertisement the caller has, not merely those on this page. */
+  total: number;
+}
+
+export const getMyAdvertisements = cache(
+  async (page = { index: 0, size: OWNER_PAGE_SIZE }): Promise<MyAdvertisementPage> => {
+    const supabase = await createSupabaseServerClient();
+    const from = page.index * page.size;
+
+    const { data, error, count } = await supabase
+      .from('owner_ads')
+      .select(COLUMNS, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, from + page.size - 1);
+
+    if (error || !data) return { rows: [], total: 0 };
+
+    const rows = await hydrate(data as unknown as Row[]);
+    return { rows, total: count ?? rows.length };
+  },
+);
+
+/**
+ * Just enough of every advertisement to count them and to work out which have
+ * expired: three small columns, no joins and no `IN (...)` lists.
+ *
+ * This is what keeps the dashboard's six figures exact while the list beside
+ * them is paged. `expiryState()` needs only a status and an expiry date, so
+ * there is nothing else to fetch — and fetching nothing else is the point.
+ */
+export interface MyAdvertisementState {
+  id: string;
+  status: AdStatus;
+  expiresAt: string | null;
+}
+
+export const getMyAdvertisementStates = cache(
+  async (): Promise<MyAdvertisementState[]> => {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('owner_ads')
+      .select('id, status, expires_at')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return (data as unknown as Array<Pick<OwnerAdRow, 'id' | 'status' | 'expires_at'>>).map(
+      (row) => ({ id: row.id, status: row.status, expiresAt: row.expires_at }),
+    );
+  },
+);
+
+/**
+ * Full rows for a known, already-narrowed set of identifiers.
+ *
+ * Used where a page has decided WHICH advertisements it needs from the light
+ * states above — the expiring-soon band, the expired list — and now needs
+ * enough to draw them. The caller is expected to have bounded the set; the
+ * database bounds it again to the caller's own advertisements regardless,
+ * because `owner_ads` filters on `auth.uid()` inside the view.
+ */
+export async function getMyAdvertisementsByIds(
+  ids: readonly string[],
+): Promise<MyAdvertisement[]> {
+  if (ids.length === 0) return [];
+
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('owner_ads')
     .select(COLUMNS)
+    .in('id', ids as string[])
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
-  const rows = data as unknown as Row[];
+  return hydrate(data as unknown as Row[]);
+}
+
+/**
+ * Turns owner rows into what the interface renders.
+ *
+ * Cover images and waiting renewals in one query each, not one per row — and
+ * now only ever for the rows actually being shown, which is what makes the
+ * `IN (...)` lists small.
+ *
+ * `ad_renewals` is filtered to the caller by its own policy.
+ */
+async function hydrate(rows: Row[]): Promise<MyAdvertisement[]> {
   if (!rows.length) return [];
 
-  // Cover images and waiting renewals in one query each, not one per row.
-  // `ad_renewals` is filtered to the caller by its own policy.
+  const supabase = await createSupabaseServerClient();
   const ids = rows.map((row) => row.id);
+
   const [{ data: images }, { data: renewals }] = await Promise.all([
     supabase
       .from('ad_images')
@@ -113,7 +208,7 @@ export const getMyAdvertisements = cache(async (): Promise<MyAdvertisement[]> =>
     categoryName: row.category_name,
     hasPendingRenewal: renewing.has(row.id),
   }));
-});
+}
 
 /**
  * What each state means, in the advertiser's terms.

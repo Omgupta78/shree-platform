@@ -8,7 +8,7 @@ import {
 } from '@/components/payments/payment-status';
 import { Container } from '@/components/ui/container';
 import { EmptyState } from '@/components/ui/states';
-import { getUserPayments } from '@/lib/data/payments';
+import { OWNER_PAYMENTS_PAGE_SIZE, getUserPayments } from '@/lib/data/payments';
 import { formatDate, formatPaise } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -27,16 +27,29 @@ export const metadata: Metadata = {
  * somebody quotes when they ring the office; the settlement signature is not
  * in the view at all.
  */
-export default async function PaymentsPage() {
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const requested = Number(Array.isArray(params.page) ? params.page[0] : params.page);
+  const pageNumber = Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 1;
+
   return (
     <OwnerGate next="/my-ads/payments">
-      <Payments />
+      <Payments pageNumber={pageNumber} />
     </OwnerGate>
   );
 }
 
-async function Payments() {
-  const payments = await getUserPayments();
+async function Payments({ pageNumber }: { pageNumber: number }) {
+  const listing = await getUserPayments({
+    index: pageNumber - 1,
+    size: OWNER_PAYMENTS_PAGE_SIZE,
+  });
+  const payments = listing.rows;
+  const pageCount = Math.max(1, Math.ceil(listing.total / OWNER_PAYMENTS_PAGE_SIZE));
 
   return (
     <Container className="py-8 sm:py-10">
@@ -95,6 +108,42 @@ async function Payments() {
               ))}
             </ul>
           )}
+
+          {/* Only once there is a second page to go to. */}
+          {pageCount > 1 ? (
+            <nav
+              aria-label="Pages of your payments"
+              className="mt-6 flex items-center justify-between gap-3 border-t border-line pt-4 text-sm"
+            >
+              {pageNumber > 1 ? (
+                <Link
+                  href={`/my-ads/payments?page=${pageNumber - 1}`}
+                  rel="prev"
+                  className="font-medium text-primary hover:underline"
+                >
+                  ← Newer
+                </Link>
+              ) : (
+                <span className="text-fg-subtle">← Newer</span>
+              )}
+
+              <span className="text-fg-muted tabular-nums">
+                Page {pageNumber} of {pageCount}
+              </span>
+
+              {pageNumber < pageCount ? (
+                <Link
+                  href={`/my-ads/payments?page=${pageNumber + 1}`}
+                  rel="next"
+                  className="font-medium text-primary hover:underline"
+                >
+                  Older →
+                </Link>
+              ) : (
+                <span className="text-fg-subtle">Older →</span>
+              )}
+            </nav>
+          ) : null}
         </div>
       </div>
     </Container>

@@ -101,7 +101,7 @@ evidence is not evidence of absence.
 
 ## MEDIUM
 
-### M1 — Two owner-facing lists load every row
+### M1 — Two owner-facing lists load every row — **FIXED**
 
 **Paths:**
 - `src/lib/data/my-ads.ts:66` — `getMyAdvertisements()`
@@ -118,10 +118,15 @@ denial-of-service surface — but a business advertising weekly for three years
 accumulates hundreds of advertisements and payments, and both pages would load
 all of them into one response.
 
-**Recommended fix.** The same `.range()` pattern already used three times
-elsewhere in the same layer, plus the existing `AdminPagination` component.
+**Fixed.** Both now page with `.range()`, matching `getAdminPayments`. The
+dashboard's six figures stay exact because they are computed from
+`getMyAdvertisementStates()` — three small columns for every advertisement, no
+joins and no `IN (...)` lists — rather than from the page being displayed.
+Paging the list would otherwise have turned "you have 60 advertisements" into
+"you have 20". The cover-image and pending-renewal lookups now run only for the
+rows on screen.
 
-**Blocks launch: NO.** It will be invisible for the first year.
+**Blocks launch: NO.**
 
 ### M2 — No error-monitoring provider
 
@@ -177,13 +182,16 @@ exposure. The place to add it is `submitAdvertisementAction`.
 
 ## LOW
 
-### L1 — Dead module
+### L1 — Dead module — **REMOVED**
 
 **Path:** `src/lib/supabase/client.ts` (17 lines)
 
-`createSupabaseBrowserClient()` is imported by nothing. All Supabase access in
-the application is server-side. Harmless; keep it if realtime is planned, delete
-it otherwise. **Blocks launch: NO.**
+`createSupabaseBrowserClient()` was imported by nothing. Verified before
+deletion: no static import by path or by symbol, no dynamic `import()`, no
+`require()`, no reference from any config file, no appearance in the built
+bundle, and no mention in the documentation other than this finding. Deleted;
+the build is unchanged. If browser-side realtime is ever wanted, the module is
+four lines of `@supabase/ssr` and is in the git history.
 
 ### L2 — The `/edition` feature is scaffolded but unbuilt
 
@@ -229,7 +237,7 @@ No `console.log`, no `debugger`, no `alert()`. `console.error`/`warn` appear
 only inside the structured logger and error boundaries.
 
 ### Unused code
-One module (L1).
+One module (L1), since removed.
 
 ### Broken routes
 None. 40 page routes; every `built: true` navigation entry resolves; every
@@ -282,8 +290,9 @@ refusal assertions across the suites.
 
 ## NON-BLOCKING ISSUES
 
-- M1 unpaged owner lists · M2 no error alerting · M3 CSP compromise ·
-  M4 no bot protection · L1 dead module · L2 unbuilt edition feature
+- ~~M1 unpaged owner lists~~ (fixed) · M2 no error alerting · M3 CSP
+  compromise · M4 no bot protection · ~~L1 dead module~~ (removed) ·
+  L2 unbuilt edition feature
 
 ## MANUAL CONFIGURATION REQUIRED
 
@@ -295,9 +304,9 @@ Full detail in `DEPLOYMENT.md`.
 
 ## OPTIONAL IMPROVEMENTS
 
-Page the two owner lists · add Sentry · delete the dead module · build the
-edition feature or remove its scaffolding · revisit bot protection if spam
-appears.
+Add Sentry · build the edition feature or remove its scaffolding · revisit bot
+protection if spam appears. (Paging the owner lists and removing the dead
+module are done.)
 
 ---
 

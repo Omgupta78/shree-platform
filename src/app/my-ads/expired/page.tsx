@@ -5,7 +5,10 @@ import { OwnerGate } from '@/components/my-ads/owner-gate';
 import { Container } from '@/components/ui/container';
 import { EmptyState } from '@/components/ui/states';
 import { getLifecycleSettings } from '@/lib/data/lifecycle-settings';
-import { getMyAdvertisements } from '@/lib/data/my-ads';
+import {
+  getMyAdvertisementStates,
+  getMyAdvertisementsByIds,
+} from '@/lib/data/my-ads';
 import { canRequestRenewal, expiryState, formatLongDate } from '@/lib/lifecycle/expiry';
 
 export const dynamic = 'force-dynamic';
@@ -29,14 +32,33 @@ export default async function ExpiredAdvertisementsPage() {
 }
 
 async function ExpiredAdvertisements() {
-  const [advertisements, settings] = await Promise.all([
-    getMyAdvertisements(),
+  /*
+   * Which advertisements have expired is decided from the light states — a
+   * status and a date for each — and only the ones that have are then fetched
+   * in full. Before Phase 13 this loaded every advertisement the advertiser
+   * had ever posted, with its cover image, in order to show the handful that
+   * had finished.
+   *
+   * Not paged: an expired list is bounded by how much somebody has advertised
+   * and is read rarely, and the set is already narrowed by the filter.
+   */
+  const [states, settings] = await Promise.all([
+    getMyAdvertisementStates(),
     getLifecycleSettings(),
   ]);
   const now = new Date();
-  const expired = advertisements
-    .map((ad) => ({ ad, state: expiryState(ad.expiresAt, ad.status, settings.expiringSoonDays, now) }))
-    .filter(({ state }) => state.kind === 'expired');
+
+  const expiredIds = states
+    .filter(
+      (ad) =>
+        expiryState(ad.expiresAt, ad.status, settings.expiringSoonDays, now).kind === 'expired',
+    )
+    .map((ad) => ad.id);
+
+  const expired = (await getMyAdvertisementsByIds(expiredIds)).map((ad) => ({
+    ad,
+    state: expiryState(ad.expiresAt, ad.status, settings.expiringSoonDays, now),
+  }));
 
   return (
     <Container className="py-8 sm:py-10">
