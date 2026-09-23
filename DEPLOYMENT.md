@@ -26,7 +26,7 @@ Read the status words literally:
 | Canonical domain | NEEDS CONFIGURATION | Set `NEXT_PUBLIC_SITE_URL` to the exact origin, with scheme and no trailing slash. Every canonical URL, sitemap entry and share link is built from it. |
 | www vs non-www | NEEDS CONFIGURATION | Pick one, add both to the host, and redirect the other to it. The code does not care which; it must only match `NEXT_PUBLIC_SITE_URL`. |
 | HSTS | READY | `Strict-Transport-Security` is sent on every response, two years, subdomains included. Browsers ignore it over plain http, so local development is unaffected. |
-| Security headers | READY | CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options`. Tested against a running build in `e2e/security.spec.ts`, including that the policy does not break any page. |
+| Security headers | READY | CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options`. Tested against a running build in `e2e/security.spec.ts`, including that the policy does not break any page. `'unsafe-eval'` is added under `next dev` only — React needs it to reconstruct call stacks in development and never uses it in production; asserted in both directions. |
 
 ### Database
 

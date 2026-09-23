@@ -26,7 +26,18 @@
  *
  * Everything else is as tight as the integrations permit.
  */
-export function contentSecurityPolicy(supabaseHost: string | undefined): string {
+export function contentSecurityPolicy(
+  supabaseHost: string | undefined,
+  /**
+   * True only under `next dev`. React uses `eval()` in development to
+   * reconstruct call stacks across the server/browser boundary — it never does
+   * in production, and says so itself in the warning you get without this. So
+   * `'unsafe-eval'` is added for development and cannot reach a deployment,
+   * because the build that serves production is never run with NODE_ENV set to
+   * development.
+   */
+  isDevelopment = process.env.NODE_ENV === 'development',
+): string {
   const supabase = supabaseHost ? [`https://${supabaseHost}`, `wss://${supabaseHost}`] : [];
 
   const directives: Record<string, string[]> = {
@@ -34,7 +45,12 @@ export function contentSecurityPolicy(supabaseHost: string | undefined): string 
 
     // Razorpay's checkout is a script served from their domain; it is the
     // whole of the payment interface and cannot be self-hosted.
-    'script-src': ["'self'", "'unsafe-inline'", 'https://checkout.razorpay.com'],
+    'script-src': [
+      "'self'",
+      "'unsafe-inline'",
+      ...(isDevelopment ? ["'unsafe-eval'"] : []),
+      'https://checkout.razorpay.com',
+    ],
 
     // Tailwind ships as a stylesheet, but Next.js inlines critical CSS and
     // React sets style attributes, both of which count as inline styles.
@@ -81,9 +97,15 @@ export interface HttpHeader {
   value: string;
 }
 
-export function securityHeaders(supabaseHost: string | undefined): HttpHeader[] {
+export function securityHeaders(
+  supabaseHost: string | undefined,
+  isDevelopment = process.env.NODE_ENV === 'development',
+): HttpHeader[] {
   return [
-    { key: 'Content-Security-Policy', value: contentSecurityPolicy(supabaseHost) },
+    {
+      key: 'Content-Security-Policy',
+      value: contentSecurityPolicy(supabaseHost, isDevelopment),
+    },
     {
       // Stops a browser guessing that an uploaded file is something more
       // interesting than the type it was served as.

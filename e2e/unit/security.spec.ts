@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { contentSecurityPolicy } from '../../src/lib/security/headers';
 import { serialiseJsonLd } from '../../src/lib/seo/jsonld';
 
 /**
@@ -59,5 +60,43 @@ test.describe('JSON-LD serialisation', () => {
   test('ordinary text is unharmed', () => {
     const data = { name: '2 BHK flat for rent in Roorkee', price: 12000 };
     expect(JSON.parse(serialiseJsonLd(data))).toEqual(data);
+  });
+});
+
+test.describe('the content policy', () => {
+  test("production never allows eval", () => {
+    const csp = contentSecurityPolicy('example.supabase.co', false);
+    expect(csp).not.toContain('unsafe-eval');
+  });
+
+  test('development allows eval, because React needs it to build a callstack', () => {
+    // React uses eval() only in development, for reconstructing stacks across
+    // the server/browser boundary. Without this the dev overlay reports an
+    // issue on every page and debugging is degraded — which is how this was
+    // found, by running the site rather than by reading the policy.
+    expect(contentSecurityPolicy('example.supabase.co', true)).toContain("'unsafe-eval'");
+  });
+
+  test('the database host is allowed, and only that host', () => {
+    const csp = contentSecurityPolicy('abcdef.supabase.co', false);
+    expect(csp).toContain('https://abcdef.supabase.co');
+    expect(csp).toContain('wss://abcdef.supabase.co');
+    expect(csp).not.toContain('*.supabase.co');
+  });
+
+  test('a site with no database configured still gets a valid policy', () => {
+    const csp = contentSecurityPolicy(undefined, false);
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).not.toContain('undefined');
+  });
+
+  test('the unconditional refusals hold in both modes', () => {
+    for (const isDev of [true, false]) {
+      const csp = contentSecurityPolicy('example.supabase.co', isDev);
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("base-uri 'self'");
+      expect(csp).toContain("form-action 'self'");
+    }
   });
 });

@@ -250,7 +250,7 @@ request that is still allowed and the very next one that is not — that one
 caller's limit does not affect another's, that a closed window starts the count
 again from one, and that nobody can read or reset their own counter.
 
-`e2e` runs 194 checks against a production build. Beyond the pure-function
+`e2e` runs 199 checks against a production build. Beyond the pure-function
 suites, `navigation.spec.ts` walks every link in the header and footer, and
 `seo.spec.ts` reads the served HTML: that each public page carries its own
 title, description, canonical, Open Graph and Twitter card; that the JSON-LD
@@ -723,6 +723,12 @@ enters a `<script>` is the JSON-LD serialiser described above. `frame-ancestors
 unconditional. `e2e/security.spec.ts` asserts the headers are present AND that
 no page is broken by them — a policy that silently blocks one script is the
 failure mode worth testing for.
+
+`'unsafe-eval'` is added under `next dev` and only there. React uses `eval()`
+in development to reconstruct call stacks across the server/browser boundary,
+and never in production; without the exception the dev overlay reports an issue
+on every page. That was found by running the site rather than by reading the
+policy, which is the argument for doing both.
 
 ### Every indexable page states its own address
 
