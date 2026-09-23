@@ -26,11 +26,41 @@
 -- without a test failing.
 -- =============================================================================
 
+/*
+ * Written to survive being run twice, which took three attempts to get right.
+ *
+ * Migration 0002 seeds `announcements` and its three subcategories with
+ * `on conflict (slug) do update`. Once this migration has renamed the parent to
+ * `others`, a second run of 0002 finds no `announcements` slug to conflict
+ * with, inserts a brand new parent, and re-points all three subcategories at
+ * it — leaving the real section childless and an empty duplicate beside it.
+ * Renaming that duplicate then failed outright on a slug already taken, so
+ * anybody whose first migration run stopped halfway and who started again met
+ * a duplicate-key error.
+ *
+ * Three statements, in this order, and each is a no-op on a first run:
+ * put the children back, remove the empty duplicate, then do the rename the
+ * first run actually needs. The delete can only ever remove a row that is
+ * genuinely spurious — the real section must already exist under its new slug,
+ * and the row must have no advertisements and, by then, no subcategories.
+ */
+update public.categories k
+   set parent_id = (select o.id from public.categories o where o.slug = 'others')
+ where exists (select 1 from public.categories o where o.slug = 'others')
+   and k.parent_id in (select c.id from public.categories c where c.slug = 'announcements');
+
+delete from public.categories c
+ where c.slug = 'announcements'
+   and exists (select 1 from public.categories o where o.slug = 'others')
+   and not exists (select 1 from public.ads a where a.category_id = c.id)
+   and not exists (select 1 from public.categories k where k.parent_id = c.id);
+
 update public.categories
    set slug = 'others',
        name = 'Others',
        description = 'Public notices, tenders, lost and found, and events.'
- where slug = 'announcements';
+ where slug = 'announcements'
+   and not exists (select 1 from public.categories o where o.slug = 'others');
 
 -- The subcategories keep their own slugs (`announcements-notice` and so on):
 -- they are not offered by the form, and renaming them would change their URLs
