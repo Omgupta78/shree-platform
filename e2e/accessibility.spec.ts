@@ -24,6 +24,9 @@ const PAGES = [
   { path: '/advertise', name: 'advertise' },
   { path: '/sign-in', name: 'sign in' },
   { path: '/post-ad', name: 'post an advertisement' },
+  { path: '/privacy', name: 'privacy policy' },
+  { path: '/terms', name: 'terms and conditions' },
+  { path: '/disclaimer', name: 'disclaimer' },
 ];
 
 async function audit(page: Page) {

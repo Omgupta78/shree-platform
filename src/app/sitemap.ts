@@ -46,6 +46,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/about`, lastModified: now, changeFrequency: 'yearly', priority: 0.4 },
     { url: `${base}/contact`, lastModified: now, changeFrequency: 'yearly', priority: 0.4 },
 
+    /*
+     * The policy pages. Low priority — nobody searches for them — but present,
+     * because a payment provider checking that they exist should find them
+     * listed, and because a page reachable only from the footer is a page a
+     * crawler may take a while to reach.
+     */
+    { url: `${base}/privacy`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${base}/terms`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${base}/disclaimer`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
+
     ...CATEGORIES.map((category) => ({
       url: `${base}/classifieds/${category.slug}`,
       lastModified: now,

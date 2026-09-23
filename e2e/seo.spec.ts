@@ -52,6 +52,9 @@ test.describe('every public page carries its own metadata', () => {
     { path: '/advertise', name: 'advertise' },
     { path: '/contact', name: 'contact' },
     { path: `/classifieds/${CATEGORIES[0]?.slug}`, name: 'a section' },
+    { path: '/privacy', name: 'privacy policy' },
+    { path: '/terms', name: 'terms and conditions' },
+    { path: '/disclaimer', name: 'disclaimer' },
   ];
 
   for (const { path, name } of pages) {

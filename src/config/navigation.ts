@@ -33,9 +33,9 @@ const ALL_PRIMARY_NAV: readonly NavLink[] = [
 ] as const;
 
 const ALL_LEGAL_NAV: readonly NavLink[] = [
-  { href: '/privacy', label: 'Privacy Policy', built: false },
-  { href: '/terms', label: 'Terms & Conditions', built: false },
-  { href: '/disclaimer', label: 'Disclaimer', built: false },
+  { href: '/privacy', label: 'Privacy Policy', built: true },
+  { href: '/terms', label: 'Terms & Conditions', built: true },
+  { href: '/disclaimer', label: 'Disclaimer', built: true },
   { href: '/report', label: 'Report an Advertisement', built: false },
 ] as const;
 

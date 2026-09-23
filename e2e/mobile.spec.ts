@@ -31,6 +31,9 @@ const PAGES = [
   '/advertise',
   '/sign-in',
   '/post-ad',
+  '/privacy',
+  '/terms',
+  '/disclaimer',
 ];
 
 /** How far the document scrolls sideways. Anything above zero is a fault. */
