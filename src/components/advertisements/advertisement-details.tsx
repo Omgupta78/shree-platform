@@ -64,6 +64,7 @@ export function AdvertisementDetails({
             <AdvertisementGallery
               images={advertisement.images}
               title={advertisement.title}
+              place={locationName(advertisement.locationSlug)}
               categoryName={category?.name ?? 'Advertisement'}
               categoryIcon={category?.icon ?? null}
             />

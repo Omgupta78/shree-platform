@@ -1,18 +1,21 @@
 import type { Metadata } from 'next';
+import { publicMetadata } from '@/lib/seo/metadata';
 
 import { PostAdPage } from '@/components/post-ad/post-ad-page';
 import { getPackageConfigs } from '@/lib/data/packages';
 
-export const metadata: Metadata = {
+/*
+ * Not indexed. A half-written form holds nothing a search engine can usefully
+ * show, and `/advertise` is the page that explains the same thing to somebody
+ * arriving from a search. `follow` stays on so the links out of it still count.
+ */
+export const metadata: Metadata = publicMetadata({
   title: 'Post Your Advertisement',
   description:
     'Book a classified or display advertisement with Shree Classified for Roorkee and Haridwar district.',
-  alternates: { canonical: '/post-ad' },
-  // A half-written form is not a page worth ranking, and it holds nothing a
-  // search engine can usefully show. The advertising information page, when
-  // it exists, is the one that should be indexed.
-  robots: { index: false, follow: true },
-};
+  path: '/post-ad',
+  index: false,
+});
 
 /**
  * The packages are read here, on the server, and handed to the form.

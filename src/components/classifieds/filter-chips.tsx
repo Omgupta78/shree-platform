@@ -19,13 +19,25 @@ interface Chip {
  * Without this, a visitor who arrives on a shared link has no way of telling
  * why they are seeing four results rather than forty.
  */
-export function FilterChips({ query }: { query: AdQuery }) {
+export function FilterChips({
+  query,
+  fixedLocation = false,
+}: {
+  query: AdQuery;
+  /**
+   * True on a location landing page, where the place is part of the address
+   * rather than a filter somebody applied. Without this the page shows a
+   * removable "Roorkee ×" chip whose × does nothing, because the path forces
+   * the place back on the next render.
+   */
+  fixedLocation?: boolean;
+}) {
   const { setParams, clearAll } = useQueryNavigation();
 
   const chips: Chip[] = [];
 
   if (query.q) chips.push({ keys: ['q'], label: `“${query.q}”` });
-  if (query.location) {
+  if (query.location && !fixedLocation) {
     chips.push({ keys: ['location'], label: locationName(query.location) });
   }
 

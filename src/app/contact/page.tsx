@@ -1,16 +1,19 @@
 import type { Metadata } from 'next';
+import { publicMetadata } from '@/lib/seo/metadata';
 import Link from 'next/link';
 
 import { OfficeContact } from '@/components/site/office-contact';
 import { Button } from '@/components/ui/button';
 import { Container } from '@/components/ui/container';
 import { SITE } from '@/config/site';
+import { getOfficeDetails } from '@/lib/data/settings';
+import { JsonLd, localBusinessSchema } from '@/lib/seo/jsonld';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicMetadata({
   title: 'Contact us',
   description: `Reach the ${SITE.publisher} office in ${SITE.city} — address, telephone, WhatsApp and email for booking or asking about an advertisement.`,
-  alternates: { canonical: '/contact' },
-};
+  path: '/contact',
+});
 
 /**
  * How to reach the office.
@@ -24,7 +27,14 @@ export const metadata: Metadata = {
  * need somewhere to deliver to, and notifications are a later phase — a form
  * that silently goes nowhere is worse than a telephone number that works.
  */
-export default function ContactPage() {
+export default async function ContactPage() {
+  /*
+   * LocalBusiness data, from the same settings the page itself shows. No
+   * opening hours and no coordinates: neither is recorded anywhere, and a
+   * guessed latitude puts a pin on somebody else's shop.
+   */
+  const office = await getOfficeDetails();
+
   return (
     <Container className="py-12">
       <div className="mx-auto max-w-3xl">
@@ -77,6 +87,8 @@ export default function ContactPage() {
           </div>
         </div>
       </div>
+
+      <JsonLd data={localBusinessSchema(office)} />
     </Container>
   );
 }

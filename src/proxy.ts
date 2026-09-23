@@ -1,8 +1,10 @@
 import { createServerClient } from '@supabase/ssr';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { isProtectedPath, isStaffPath } from '@/config/navigation';
 import { isSupabaseConfigured, supabaseCredentials } from '@/lib/env';
+import { classifiedsPathVerdict } from '@/lib/seo/missing';
 import type { Database } from '@/types/database';
 
 /**
@@ -40,8 +42,10 @@ export default async function proxy(request: NextRequest) {
 
   if (!isSupabaseConfigured) {
     // Without a database there are no accounts, so a protected page has
-    // nothing to protect. It renders its own "not connected" notice.
-    return NextResponse.next();
+    // nothing to protect. It renders its own "not connected" notice. The
+    // missing-address check still runs: the half of it that comes from
+    // configuration — categories and places — needs no database at all.
+    return (await missingResponse(request, null)) ?? NextResponse.next();
   }
 
   let response = NextResponse.next({ request });
@@ -114,7 +118,41 @@ export default async function proxy(request: NextRequest) {
     }
   }
 
-  return response;
+  return (await missingResponse(request, supabase)) ?? response;
+}
+
+/**
+ * A real 404 for an address with nothing at it.
+ *
+ * Runs last, so a session is still refreshed for the request that is about to
+ * be turned away, and so the checks that decide where a PERSON goes are never
+ * delayed by a lookup about a URL.
+ *
+ * It has to happen here rather than in the page. This site's shell reads the
+ * session, so the response begins streaming as 200 before a page can discover
+ * that its advertisement is missing, and a status cannot be changed once
+ * streaming has begun. The reasoning, and Next's own advice to put the check
+ * in the proxy, are in `lib/seo/missing.ts`.
+ *
+ * The rewrite keeps the address in the browser's bar while serving a route
+ * handler that answers 404 — so a person sees the URL they typed, and a
+ * crawler gets the status that removes it from the index.
+ */
+async function missingResponse(
+  request: NextRequest,
+  supabase: SupabaseClient<Database> | null,
+): Promise<NextResponse | null> {
+  const { pathname } = request.nextUrl;
+  if (request.method !== 'GET') return null;
+  if (!pathname.startsWith('/classifieds/')) return null;
+
+  const verdict = await classifiedsPathVerdict(pathname, supabase);
+  if (verdict !== 'missing') return null;
+
+  const gone = request.nextUrl.clone();
+  gone.pathname = '/classifieds/unavailable';
+  gone.search = '';
+  return NextResponse.rewrite(gone);
 }
 
 export const config = {

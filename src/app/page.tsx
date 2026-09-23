@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 
+import { publicMetadata } from '@/lib/seo/metadata';
+
 import { AdvertisementTypes } from '@/components/home/advertisement-types';
 import { BusinessAdvertisingSection } from '@/components/home/business-advertising-section';
 import { BusinessInfoSection } from '@/components/home/business-info-section';
@@ -17,19 +19,12 @@ import {
 } from '@/lib/data/classifieds-repository';
 import { CURRENT_EDITION, PREVIOUS_EDITIONS } from '@/lib/mock/editions';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicMetadata({
   title: `${SITE.name} | Local Classified & Advertising Platform in ${SITE.city}`,
   description:
     'Browse local classified advertisements for jobs, property, education, vehicles and services in Roorkee and Haridwar district. Publish your own advertisement, or advertise your business in print and online with Shree Classified.',
-  alternates: { canonical: '/' },
-  openGraph: {
-    title: `${SITE.name} | Local Classified & Advertising Platform in ${SITE.city}`,
-    description:
-      'Local classified and display advertising for Roorkee and Haridwar district, in print every Saturday and online all week.',
-    type: 'website',
-    locale: 'en_IN',
-  },
-};
+  path: '/',
+});
 
 /**
  * Homepage.

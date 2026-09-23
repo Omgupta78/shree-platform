@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+
+import { publicMetadata } from '@/lib/seo/metadata';
 import Link from 'next/link';
 
 import { Container } from '@/components/ui/container';
@@ -6,12 +8,12 @@ import { CategoryIcon } from '@/components/ui/icons';
 import { CATEGORIES, categoryHref } from '@/config/categories';
 import { countByCategory } from '@/lib/data/classifieds-repository';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicMetadata({
   title: 'All categories',
   description:
     'Every classified section on Shree Classified — jobs, property, education, vehicles, business, services, matrimonial, buy and sell, and public notices across Roorkee and Haridwar district.',
-  alternates: { canonical: '/categories' },
-};
+  path: '/categories',
+});
 
 /**
  * The category index. Reads the same central configuration the browsing pages

@@ -20,11 +20,14 @@ import { cn } from '@/lib/utils';
 export function AdvertisementGallery({
   images,
   title,
+  place,
   categoryName,
   categoryIcon,
 }: {
   images: readonly string[];
   title: string;
+  /** The town the advertisement is placed for, for the alternative text. */
+  place?: string;
   categoryName: string;
   categoryIcon: CategoryIconName | string | null;
 }) {
@@ -69,7 +72,16 @@ export function AdvertisementGallery({
   }
 
   const current = images[index] as string;
-  const alt = `${title} — image ${index + 1} of ${count}`;
+  const subject = place ? `${title} in ${place}` : title;
+  /*
+   * "2 BHK flat for rent in Roorkee — photograph 2 of 4".
+   *
+   * The advertiser's own title and their town, and nothing else. A list of
+   * search terms appended here would be keyword stuffing done on their behalf,
+   * and it is read aloud to somebody using a screen reader — who wants to know
+   * what the picture shows, not what the page hopes to rank for.
+   */
+  const alt = count > 1 ? `${subject} — photograph ${index + 1} of ${count}` : subject;
 
   return (
     <div>
@@ -122,6 +134,11 @@ export function AdvertisementGallery({
                     : 'border-line hover:border-line-strong',
                 )}
               >
+                {/*
+                  Empty alt on purpose: the button around it already carries
+                  "Show image 2", so describing the picture again would have a
+                  screen reader announce the same control twice.
+                */}
                 {/* eslint-disable-next-line @next/next/no-img-element -- advertiser upload */}
                 <img src={image} alt="" className="h-full w-full object-cover" />
               </button>

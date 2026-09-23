@@ -176,10 +176,16 @@ function ImagePanel({
 
   if (cover) {
     return (
+      /*
+       * Described rather than decorative. The card's heading is the
+       * advertisement's title, but the photograph is the thing somebody
+       * scanning a grid actually looks at, and a reader who cannot see it
+       * should be told what it shows and where it is.
+       */
       // eslint-disable-next-line @next/next/no-img-element -- sized at upload time
       <img
         src={cover}
-        alt=""
+        alt={`${advertisement.title} in ${locationName(advertisement.locationSlug)}`}
         loading="lazy"
         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
       />

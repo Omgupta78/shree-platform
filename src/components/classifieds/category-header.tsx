@@ -1,7 +1,9 @@
 import Link from 'next/link';
 
+import { Breadcrumbs, type Crumb } from '@/components/ui/breadcrumbs';
 import { CategoryIcon } from '@/components/ui/icons';
 import { CATEGORIES, categoryHref, type Category } from '@/config/categories';
+import type { LocationOption } from '@/config/locations';
 import { cn } from '@/lib/utils';
 
 /**
@@ -14,39 +16,43 @@ import { cn } from '@/lib/utils';
 export function CategoryHeader({
   category,
   totalLabel,
+  place = null,
+  intro,
+  baseUrl,
 }: {
   /** Null on the all-classifieds page. */
   category: Category | null;
   totalLabel: string;
+  /** Set on a location landing page — "Jobs in Roorkee". */
+  place?: LocationOption | null;
+  /** Replaces the category's own one-liner where a landing page needs its own. */
+  intro?: string;
+  /** Absolute site URL. Given, the trail also emits BreadcrumbList data. */
+  baseUrl?: string;
 }) {
+  const crumbs: Crumb[] = [
+    { label: 'Home', href: '/' },
+    { label: 'Classifieds', ...(category ? { href: '/classifieds' } : {}) },
+  ];
+  if (category) {
+    crumbs.push({
+      label: category.name,
+      // The category is a link only when it is not itself the current page.
+      ...(place ? { href: categoryHref(category.slug) } : {}),
+    });
+  }
+  if (place) crumbs.push({ label: place.name });
+
+  const heading = category
+    ? place
+      ? `${category.name} in ${place.name}`
+      : category.name
+    : 'Classifieds';
+
   return (
     <div className="border-b border-line bg-surface">
       <div className="mx-auto w-full max-w-7xl px-4 pt-8 pb-0 sm:px-6 lg:px-8">
-        <nav aria-label="Breadcrumb" className="text-xs text-fg-subtle">
-          <ol className="flex items-center gap-1.5">
-            <li>
-              <Link href="/" className="hover:text-primary">
-                Home
-              </Link>
-            </li>
-            <li aria-hidden="true">/</li>
-            <li>
-              {category ? (
-                <Link href="/classifieds" className="hover:text-primary">
-                  Classifieds
-                </Link>
-              ) : (
-                <span className="text-fg">Classifieds</span>
-              )}
-            </li>
-            {category ? (
-              <>
-                <li aria-hidden="true">/</li>
-                <li className="text-fg">{category.name}</li>
-              </>
-            ) : null}
-          </ol>
-        </nav>
+        <Breadcrumbs items={crumbs} baseUrl={baseUrl} />
 
         <div className="mt-4 flex items-start gap-4">
           {category ? (
@@ -57,17 +63,18 @@ export function CategoryHeader({
 
           <div className="min-w-0">
             <h1 className="font-serif text-3xl leading-tight font-semibold sm:text-4xl">
-              {category ? category.name : 'Classifieds'}
+              {heading}
             </h1>
-            {category?.printedAs ? (
+            {category?.printedAs && !place ? (
               <p lang="hi" className="font-deva mt-1 text-sm text-fg-subtle">
                 {category.printedAs}
               </p>
             ) : null}
             <p className="mt-2 max-w-2xl text-[0.9375rem] text-fg-muted">
-              {category
-                ? category.description
-                : 'Browse local advertisements from Shree Classified.'}
+              {intro ??
+                (category
+                  ? category.description
+                  : 'Browse local advertisements from Shree Classified.')}
             </p>
             <p className="mt-1 text-sm text-fg-subtle">{totalLabel}</p>
           </div>

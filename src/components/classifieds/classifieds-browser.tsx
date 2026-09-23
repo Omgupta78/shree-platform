@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 
 import { CategoryHeader } from '@/components/classifieds/category-header';
 import { FilterChips } from '@/components/classifieds/filter-chips';
@@ -10,6 +10,7 @@ import { SearchPanel } from '@/components/classifieds/search-panel';
 import { SearchRecorder } from '@/components/classifieds/search-recorder';
 import { Container } from '@/components/ui/container';
 import type { Category } from '@/config/categories';
+import type { LocationOption } from '@/config/locations';
 import type { AdQuery } from '@/lib/classifieds/query';
 import { countAll, countByCategory, queryAdvertisements } from '@/lib/data/classifieds-repository';
 
@@ -24,9 +25,20 @@ import { countAll, countByCategory, queryAdvertisements } from '@/lib/data/class
 export async function ClassifiedsBrowser({
   query,
   category,
+  place = null,
+  intro,
+  baseUrl,
+  belowResults,
 }: {
   query: AdQuery;
   category: Category | null;
+  /** Set on a location landing page, which is this browser scoped to a place. */
+  place?: LocationOption | null;
+  intro?: string;
+  /** Absolute site URL, so the breadcrumb trail can emit its structured data. */
+  baseUrl?: string;
+  /** Extra links under the results — the sibling places for a landing page. */
+  belowResults?: ReactNode;
 }) {
   const [results, sectionTotal] = await Promise.all([
     queryAdvertisements(query),
@@ -39,9 +51,14 @@ export async function ClassifiedsBrowser({
       : countAll(),
   ]);
 
-  const totalLabel = category
-    ? `${sectionTotal} live ${sectionTotal === 1 ? 'advertisement' : 'advertisements'} in this section`
-    : `${sectionTotal} live ${sectionTotal === 1 ? 'advertisement' : 'advertisements'} across all sections`;
+  const plural = (n: number) => (n === 1 ? 'advertisement' : 'advertisements');
+  const totalLabel = place
+    ? // On a landing page the heading figure is the place's own, because the
+      // section's total would describe a different page from the one shown.
+      `${results.total} live ${plural(results.total)} in ${place.name}`
+    : category
+      ? `${sectionTotal} live ${plural(sectionTotal)} in this section`
+      : `${sectionTotal} live ${plural(sectionTotal)} across all sections`;
 
   return (
     <>
@@ -57,7 +74,13 @@ export async function ClassifiedsBrowser({
         />
       ) : null}
 
-      <CategoryHeader category={category} totalLabel={totalLabel} />
+      <CategoryHeader
+        category={category}
+        totalLabel={totalLabel}
+        place={place}
+        intro={intro}
+        baseUrl={baseUrl}
+      />
 
       <Container className="py-8">
         <Suspense fallback={<div className="h-[5.5rem] rounded-md border border-line bg-surface" />}>
@@ -70,7 +93,7 @@ export async function ClassifiedsBrowser({
 
         <div className="mt-6">
           <Suspense fallback={null}>
-            <FilterChips query={query} />
+            <FilterChips query={query} fixedLocation={place !== null} />
           </Suspense>
         </div>
 
@@ -90,6 +113,8 @@ export async function ClassifiedsBrowser({
             </Suspense>
 
             <Pagination query={query} page={results.page} pageCount={results.pageCount} />
+
+            {belowResults}
           </div>
         </div>
       </Container>

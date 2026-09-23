@@ -10,7 +10,9 @@ import {
   ownerExpiredContext,
 } from '@/components/lifecycle/owner-advertisement-panel';
 import { ClassifiedsBrowser } from '@/components/classifieds/classifieds-browser';
-import { CATEGORIES, CATEGORY_BY_SLUG } from '@/config/categories';
+import Link from 'next/link';
+
+import { CATEGORIES, CATEGORY_BY_SLUG, type Category } from '@/config/categories';
 import { SITE } from '@/config/site';
 import { parseAdQuery, type RawSearchParams } from '@/lib/classifieds/query';
 import {
@@ -18,9 +20,14 @@ import {
   getExpiredAdvertisement,
   getLatestAdvertisements,
   getSimilarAdvertisements,
+  queryAdvertisements,
 } from '@/lib/data/classifieds-repository';
 import { locationName } from '@/config/locations';
 import { siteUrl } from '@/lib/env';
+import { JsonLd, itemListSchema } from '@/lib/seo/jsonld';
+import { liveLocationLandings } from '@/lib/seo/landings';
+import { listingIndexing } from '@/lib/seo/listing';
+import { metaDescription, publicMetadata } from '@/lib/seo/metadata';
 import type { Advertisement } from '@/types/content';
 
 /**
@@ -50,18 +57,28 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<RawSearchParams>;
 }): Promise<Metadata> {
   const { slug } = await params;
 
   const category = CATEGORY_BY_SLUG.get(slug);
   if (category) {
-    return {
-      title: category.name,
-      description: category.description,
-      alternates: { canonical: `/classifieds/${category.slug}` },
-    };
+    // A section is also every filtered, sorted and paged view of itself.
+    // `listingIndexing` decides which of those asks to be ranked.
+    const raw = await searchParams;
+    const query = parseAdQuery(raw, category.slug);
+    const { canonicalPath, index } = listingIndexing(`/classifieds/${category.slug}`, query, raw);
+
+    return publicMetadata({
+      title:
+        query.page > 1 ? `${category.name} — page ${query.page}` : category.name,
+      description: `${category.description} Placed with ${SITE.name} across ${SITE.city} and Haridwar district.`,
+      path: canonicalPath,
+      index,
+    });
   }
 
   const advertisement = await getAdvertisementBySlug(slug);
@@ -70,39 +87,63 @@ export async function generateMetadata({
     // An expired one says so, and says nothing that would read as available.
     const expired = await getExpiredAdvertisement(slug);
     if (expired) {
-      return {
+      return publicMetadata({
         title: 'Advertisement expired',
         description: `This advertisement is no longer active. Browse current ${expired.categoryName ?? 'classified'} advertisements on ${SITE.name}.`,
-        robots: { index: false, follow: true },
-      };
+        path: `/classifieds/${slug}`,
+        // Not indexed, but followed: the links out of this page lead to
+        // advertisements that ARE current, and those should still be crawled.
+        index: false,
+      });
     }
-    return { title: 'Advertisement not found', robots: { index: false, follow: true } };
+    return { title: 'Advertisement not found', robots: { index: false, follow: false } };
   }
 
   const place = locationName(advertisement.locationSlug);
+  /*
+   * "2 BHK flat for rent in Roorkee" — what the advertisement is, and where.
+   * The place is what makes a classified findable: somebody searching is
+   * nearly always searching locally, and a title without a town competes with
+   * every identical item in the country.
+   *
+   * Nothing private goes in. The advertiser's name, telephone number, WhatsApp
+   * number and email are all on the page behind a consent check, and none of
+   * them appears in the title, the description or the share card — a social
+   * preview is copied and forwarded by people who never opened the page.
+   */
   const title = `${advertisement.title} in ${place}`;
-  const description = advertisement.summary.slice(0, 200);
-  const canonical = `/classifieds/${advertisement.slug}`;
-  const images = advertisement.images.map((image) => `${siteUrl()}${image}`);
+  const description = metaDescription(advertisement.summary);
 
-  return {
+  return publicMetadata({
     title,
     description,
-    alternates: { canonical },
-    // `getAdvertisementBySlug` returns null for anything not approved, so a
-    // pending, rejected or expired advertisement never reaches this branch and
-    // never gets an indexable page.
-    robots: { index: true, follow: true },
-    openGraph: {
-      type: 'article',
-      title: `${title} | ${SITE.name}`,
-      description,
-      url: `${siteUrl()}${canonical}`,
-      siteName: SITE.name,
-      locale: 'en_IN',
-      ...(images.length ? { images } : {}),
-    },
-  };
+    path: `/classifieds/${advertisement.slug}`,
+    type: 'article',
+    // `getAdvertisementBySlug` returns null for anything not approved and
+    // unexpired, so a pending, rejected or finished advertisement never
+    // reaches this branch and never gets an indexable page.
+    index: true,
+    images: advertisement.images,
+    imageAlt: imageAltText(advertisement, 0),
+  });
+}
+
+/**
+ * Alternative text for one of an advertisement's photographs.
+ *
+ * Says what the picture is of and where it is — "2 BHK flat for rent in
+ * Roorkee" — rather than repeating a keyword list. Where there are several,
+ * the position is added so a screen-reader user can tell them apart.
+ *
+ * The advertiser's own words are used as written. Appending terms they did not
+ * choose would be keyword stuffing carried out on their behalf.
+ */
+export function imageAltText(advertisement: Advertisement, index: number): string {
+  const place = locationName(advertisement.locationSlug);
+  const subject = `${advertisement.title} in ${place}`;
+  const count = advertisement.images.length;
+  if (count <= 1) return subject;
+  return `${subject} — photograph ${index + 1} of ${count}`;
 }
 
 export default async function ClassifiedsSlugPage({
@@ -117,13 +158,81 @@ export default async function ClassifiedsSlugPage({
 
   if (category) {
     const query = parseAdQuery(await searchParams, category.slug);
-    return <ClassifiedsBrowser query={query} category={category} />;
+    return <CategorySection category={category} query={query} />;
   }
 
   return (
     <Suspense fallback={<AdvertisementDetailsSkeleton />}>
       <AdvertisementRoute slug={slug} />
     </Suspense>
+  );
+}
+
+/**
+ * One section, with the places it is currently running in linked underneath.
+ *
+ * The links are the internal linking this phase is largely about: a reader —
+ * and a crawler — reaches "Property in Manglaur" from the property section,
+ * rather than that page existing with nothing pointing at it. Only pairs with
+ * genuine inventory are listed, so the section never links to an empty page.
+ */
+async function CategorySection({
+  category,
+  query,
+}: {
+  category: Category;
+  query: ReturnType<typeof parseAdQuery>;
+}) {
+  const base = siteUrl();
+  const [results, landings] = await Promise.all([
+    queryAdvertisements(query),
+    liveLocationLandings(),
+  ]);
+  const places = landings.filter((l) => l.categorySlug === category.slug);
+
+  return (
+    <>
+      <ClassifiedsBrowser
+        query={query}
+        category={category}
+        baseUrl={base}
+        belowResults={
+          places.length > 0 ? (
+            <nav aria-label={`${category.name} by place`} className="mt-10">
+              <h2 className="font-serif text-lg font-semibold">
+                {category.name} by place
+              </h2>
+              <p className="mt-1 text-sm text-fg-muted">
+                Places where this section currently has advertisements running.
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {places.map((landing) => (
+                  <li key={landing.path}>
+                    <Link
+                      href={landing.path}
+                      className="inline-flex items-center rounded-full border border-line-strong px-3 py-1.5 text-sm hover:bg-surface-sunken"
+                    >
+                      {category.name} in {landing.locationName}
+                      <span className="ml-1.5 text-fg-subtle tabular-nums">{landing.count}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ) : null
+        }
+      />
+
+      {results.items.length > 0 ? (
+        <JsonLd
+          data={itemListSchema({
+            name: category.name,
+            path: `/classifieds/${category.slug}`,
+            urls: results.items.map((ad) => `/classifieds/${ad.slug}`),
+          })}
+        />
+      ) : null}
+    </>
   );
 }
 

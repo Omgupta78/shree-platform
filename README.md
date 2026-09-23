@@ -246,6 +246,15 @@ ends by proving the audit revoke described below is real: an advertiser can
 write neither through `write_audit()` nor through the guarded shim, and an
 export by an administrator does reach the trail.
 
+`e2e` runs 157 checks against a production build. Beyond the pure-function
+suites, `navigation.spec.ts` walks every link in the header and footer, and
+`seo.spec.ts` reads the served HTML: that each public page carries its own
+title, description, canonical, Open Graph and Twitter card; that the JSON-LD
+parses and invents no rating, opening hours or coordinates; that a filtered
+view is `noindex` while page two is not; that a missing advertisement answers a
+real 404; that every URL in the sitemap resolves; and that no share card
+carries an advertiser's telephone number.
+
 `e2e` needs a browser once: `npx playwright install chromium`.
 
 `e2e:db` needs the same local Postgres plus a [PostgREST](https://postgrest.org)
@@ -652,6 +661,116 @@ return is prefixed with an apostrophe: this export carries text the public typed
 and a search term beginning `=HYPERLINK(...)` would otherwise become a live
 formula in the office's spreadsheet.
 
+### Every indexable page states its own address
+
+`lib/seo/metadata.ts` builds the title, description, canonical URL, Open Graph
+card and Twitter/X card from one set of facts, so they cannot drift apart —
+a page whose description matches on the page but not in the share card is the
+usual result of spelling all three out by hand. There is deliberately **no
+default description**: a page that does not supply one gets no description tag
+rather than the site's boilerplate repeated forty times, and `/admin/seo` finds
+the omission.
+
+No `twitter:site` or `twitter:creator` is emitted. This business has no X
+account recorded anywhere in the project, and an invented @name points at
+somebody else.
+
+### The listing URLs that ask to be ranked are a whitelist
+
+A browse page takes a category, a place, a price range, a posted-within window,
+a type, a sort order, a page number and any number of category facets.
+Multiplied out that is tens of thousands of URLs over a few hundred
+advertisements — the doorway-page problem arrived at by accident.
+
+So `lib/seo/listing.ts` indexes the sections themselves, the location landing
+pages, and their numbered pages. Everything a visitor narrowed — a search term,
+a price band, a sort order, a facet — is `noindex, follow` and canonicalises to
+the clean section it is a view of. Pagination goes the other way on purpose:
+page two is indexed and canonical **to itself**, because it holds different
+advertisements from page one and saying otherwise would claim a hundred
+advertisements were a duplicate of twelve.
+
+### A location page has to earn its existence
+
+Nine categories by nine places is eighty-one URLs that could be generated in a
+loop, most of them empty. `lib/seo/landings.ts` gives a pair a page only when it
+has at least three live advertisements. Below that the URL still **works** —
+somebody who filtered their way there gets a real page with the real, small list
+— but it says `noindex` and stays out of the sitemap. Only a slug that is not a
+real category or a real place is a 404.
+
+### A missing advertisement returns a real 404, and that needs the proxy
+
+Next.js 16.3.5 begins streaming as soon as the shell renders, and this site's
+shell reads the session to draw the account menu. By the time a page discovers
+its advertisement is missing the `200` has been sent, and the status cannot be
+changed — `notFound()` renders the right page and injects `noindex`, but the
+response is a soft 404. This was verified against a built server rather than
+assumed; the response carries `Transfer-Encoding: chunked`.
+
+Next's own documentation names the remedy: check before the response streams,
+in `proxy`. So `lib/seo/missing.ts` settles the question there. It is kept
+cheap — a category-and-place path is decided from configuration with no query
+at all, and only an advertisement slug costs one indexed lookup. On any database
+error the answer is "exists": a wrong 404 is far more expensive than a wrong
+200, because Google removes the URL over it.
+
+The 404 itself is served by `/classifieds/unavailable`, a Route Handler, because
+a route handler can set its own status where a page cannot. It is a
+self-contained document with inline CSS — it cannot use the React layout — which
+in exchange makes it impossible for it to fail.
+
+An advertisement that has merely **expired** is not missing. It keeps its URL and
+answers 200 with "Advertisement expired" and `noindex`, because that address has
+been printed and sent over WhatsApp, and a 404 would be less true than a page
+saying what happened.
+
+### Structured data describes only what the project knows
+
+`Organization`, `WebSite` and `BreadcrumbList` site-wide, `LocalBusiness` on the
+contact page, `ItemList` on the listing pages, and `Product` on an
+advertisement. The rule is stricter than the vocabulary: schema.org will happily
+accept an `aggregateRating`, `openingHours`, `geo` or `priceRange`, and this
+office has none of them written down, so none is emitted. An advertisement with
+no price gets no `offers` block rather than one containing a zero. A guessed
+coordinate pair puts a pin on somebody else's shop.
+
+The `SearchAction` is declared because the search it describes genuinely works:
+`/classifieds?q=` is a real server-rendered query, not a JavaScript-only box.
+
+### robots.txt blocks two things, and that is the point
+
+Only paths a crawler would be redirected away from anyway (`/admin/`,
+`/my-ads/`, `/dashboard/`) and machinery (`/api/`, `/auth/`, `/search`).
+
+The sign-in forms, the post-advertisement form, expired advertisements and every
+filtered view are left crawlable on purpose. Each says `noindex` in its own
+metadata, and **a crawler has to be allowed to fetch a page in order to read
+that**. Blocking them here would leave the URLs eligible to be indexed from a
+link elsewhere with no way for Google to discover we did not want them. An
+earlier version of this file disallowed `/account/`, a path this site does not
+have.
+
+### The sitemap is split before it needs to be
+
+`/sitemap.xml` carries the pages that do not change one at a time — home,
+sections, the information pages and whichever location landing pages currently
+qualify. Advertisements are split across `/classifieds/sitemap/0.xml` onwards,
+five thousand to a file, through Next's `generateSitemaps`; every file is named
+in `robots.txt`. Each entry carries the advertisement's own `updated_at` as its
+`lastmod`, because a sitemap that stamps everything with today teaches crawlers
+to ignore its dates.
+
+### /admin/seo reports no ranking
+
+There is no SEO score, no keyword position, no impression count and no traffic
+estimate, and their absence is the point: rankings live in Google's index and
+impressions live in Search Console. A number invented here would be read as a
+measurement and planned against. What it does report is everything decidable
+from the site's own rows — duplicate slugs, slugs that collide with a section,
+descriptions too short to make a snippet, sections with nothing in them,
+navigation pointing at pages that do not exist.
+
 ### Two different things are called a report
 
 `/admin/reports` is the reader-report queue — what somebody flagged as a fraud or
@@ -718,6 +837,13 @@ src/
     classifieds/           browse, one advertisement, report, view and search actions
     my-ads/                the advertiser's dashboard, expired list, detail, renew, edit and payments
     admin/analytics/       the dashboard, the detailed reports and the CSV export
+    admin/seo/             what the site looks like to a search engine
+    classifieds/[slug]/[location]/
+                           section-and-place landing pages, where inventory earns one
+    classifieds/unavailable/
+                           the genuine 404 for a missing advertisement
+    opengraph-image.tsx    the generated share card
+    sitemap.ts, robots.ts  the main sitemap and the crawl rules
     api/cron/              the expiry sweep (and the search-log prune) endpoint
     api/payments/          create-order, verify, and Razorpay's webhook
     post-ad/               the submission form and its server action
@@ -737,6 +863,7 @@ src/
     ui/                    button, badge, container, field, icons, states
   lib/
     analytics/             ranges in the office's own day, the queries, the report registry
+    seo/                   metadata and JSON-LD builders, indexing policy, landings, audit
     auth/                  session reading and the account schemas
     classifieds/           query parsing, filters, similarity — pure functions
     data/                  data access — public_ads, owner_ads, packages, settings
@@ -754,9 +881,11 @@ supabase/
   seed/                    development-only package rates; NOT a migration
 e2e/                       Playwright, against a production build
   navigation.spec.ts       every link in the header and footer, asked of the server
+  seo.spec.ts              the tags a search engine actually receives, read from
+                             served HTML: canonicals, JSON-LD, status codes, sitemaps
   unit/                    pure functions — expiry wording, payment signatures,
-                             notification templates and escaping, date ranges
-                             and the CSV
+                             notification templates and escaping, date ranges,
+                             the CSV, and which listing URLs ask to be indexed
   db/                      the admin suite, against a real local database
     harness/               seed, PostgREST launcher, auth gateway, build
 ```

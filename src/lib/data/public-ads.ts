@@ -383,3 +383,83 @@ export async function getExpiredPublicStub(slug: string): Promise<ExpiredAdverti
     endedAt: row.ended_at,
   };
 }
+
+/**
+ * How many live advertisements there are in each category-and-place pair.
+ *
+ * One grouped read rather than a query per pair: nine categories by nine
+ * places is eighty-one combinations, and asking eighty-one times to decide
+ * which landing pages are worth having would cost more than the pages save.
+ *
+ * Only `category_slug` and `location_slug` are selected — this is a counting
+ * query and has no business pulling contact details across the wire.
+ */
+export const countPublicByCategoryAndLocation = cache(
+  async (): Promise<Readonly<Record<string, number>>> => {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('public_ads')
+      .select('category_slug, location_slug');
+
+    if (error) return {};
+
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) {
+      const category = row.category_slug as string | null;
+      const location = row.location_slug as string | null;
+      if (!category || !location) continue;
+      const key = `${category}/${location}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  },
+);
+
+export interface SitemapEntry {
+  slug: string;
+  /** When the advertisement last changed, for `lastmod`. */
+  updatedAt: string | null;
+}
+
+/**
+ * One page of advertisements for the sitemap, newest first.
+ *
+ * Paged rather than "all of them" because a sitemap file may hold 50,000 URLs
+ * and 50 MB, and because reading every row to build one document is the kind
+ * of query that is fine at two hundred advertisements and an outage at two
+ * hundred thousand. `sitemapAdvertisementCount` decides how many pages there
+ * are; this returns one of them.
+ *
+ * `updated_at` comes along so each entry carries a real `lastmod`. A sitemap
+ * that stamps every URL with today's date tells a crawler that everything
+ * changed today, which is false, and which is why crawlers learn to ignore
+ * `lastmod` from sites that do it.
+ */
+export async function getPublicAdvertisementPage(
+  offset: number,
+  limit: number,
+): Promise<SitemapEntry[]> {
+  const supabase = createSupabaseAnonClient();
+  const { data, error } = await supabase
+    .from('public_ads')
+    .select('slug, updated_at')
+    .order('published_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) return [];
+  return (data ?? []).map((row) => ({
+    slug: row.slug as string,
+    updatedAt: (row.updated_at as string | null) ?? null,
+  }));
+}
+
+/** How many advertisements the sitemap has to cover. */
+export async function sitemapAdvertisementCount(): Promise<number> {
+  const supabase = createSupabaseAnonClient();
+  const { count, error } = await supabase
+    .from('public_ads')
+    .select('id', { count: 'exact', head: true });
+
+  if (error) return 0;
+  return count ?? 0;
+}

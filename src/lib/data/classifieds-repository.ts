@@ -7,6 +7,7 @@ import { findSimilar } from '@/lib/classifieds/similar';
 import {
   countPublicAdvertisements,
   countPublicByCategory,
+  countPublicByCategoryAndLocation,
   getPublicAdvertisementBySlug,
   getPublicAdvertisementSlugs as getPublicAdSlugsFromDatabase,
   getExpiredPublicStub,
@@ -145,4 +146,21 @@ export async function getExpiredAdvertisement(
     locationSlug: found.locationSlug,
     endedAt: found.expiresAt,
   };
+}
+
+/**
+ * Live advertisement counts per category-and-place, for deciding which
+ * location landing pages genuinely have something on them.
+ *
+ * Keyed `"<category>/<location>"`.
+ */
+export async function countByCategoryAndLocation(): Promise<Readonly<Record<string, number>>> {
+  if (isSupabaseConfigured) return countPublicByCategoryAndLocation();
+
+  const counts: Record<string, number> = {};
+  for (const ad of activeMock()) {
+    const key = `${ad.categorySlug}/${ad.locationSlug}`;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
 }

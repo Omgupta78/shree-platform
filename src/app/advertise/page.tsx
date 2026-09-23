@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { publicMetadata } from '@/lib/seo/metadata';
 
 import { OfficeContact } from '@/components/site/office-contact';
 import { Badge } from '@/components/ui/badge';
@@ -12,11 +13,11 @@ import { getPackageConfigs } from '@/lib/data/packages';
 import { formatPaiseAsRupees, formatPhone } from '@/lib/format';
 import { isChargeable } from '@/lib/payments/amounts';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicMetadata({
   title: 'Advertise with us',
   description: `Book a classified or display advertisement with ${SITE.name} — in the printed edition every ${SITE.publishDay} and online in ${SITE.city} and Haridwar district.`,
-  alternates: { canonical: '/advertise' },
-};
+  path: '/advertise',
+});
 
 /**
  * What we sell, and how to buy it.

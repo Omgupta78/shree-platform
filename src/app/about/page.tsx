@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { publicMetadata } from '@/lib/seo/metadata';
 import Link from 'next/link';
 
 import { OfficeContact } from '@/components/site/office-contact';
@@ -8,11 +9,11 @@ import { ADVERTISEMENT_TYPES } from '@/config/ad-types';
 import { CATEGORIES, categoryHref } from '@/config/categories';
 import { SITE } from '@/config/site';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicMetadata({
   title: 'About us',
   description: SITE.description,
-  alternates: { canonical: '/about' },
-};
+  path: '/about',
+});
 
 /**
  * Who publishes this, and how it works.

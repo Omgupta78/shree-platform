@@ -159,6 +159,7 @@ export const ADMIN_NAV: ReadonlyArray<{ heading: string; items: readonly AdminNa
     items: [
       { href: '/admin/analytics', label: 'Analytics', built: true },
       { href: '/admin/analytics/reports', label: 'Detailed reports', built: true },
+      { href: '/admin/seo', label: 'Search engines', built: true },
     ],
   },
   {
