@@ -798,6 +798,15 @@ export interface Database {
       setting_int: { Args: { p_key: string; p_default: number }; Returns: number };
       slugify: { Args: { p_text: string }; Returns: string };
       record_ad_view: { Args: { p_ad_id: string }; Returns: undefined };
+      record_search: {
+        Args: { p_term: string; p_result_count: number; p_category_id: string | null };
+        Returns: undefined;
+      };
+      prune_search_events: { Args: Record<string, never>; Returns: number };
+      log_report_export: {
+        Args: { p_report: string; p_from: string; p_to: string; p_rows: number };
+        Returns: undefined;
+      };
       is_permitted_ad_transition: {
         Args: { p_from: AdStatus; p_to: AdStatus };
         Returns: boolean;

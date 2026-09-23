@@ -7,6 +7,7 @@ import { FilterSidebarSkeleton } from '@/components/classifieds/loading-skeleton
 import { Pagination } from '@/components/classifieds/pagination';
 import { ResultsPanel } from '@/components/classifieds/results-panel';
 import { SearchPanel } from '@/components/classifieds/search-panel';
+import { SearchRecorder } from '@/components/classifieds/search-recorder';
 import { Container } from '@/components/ui/container';
 import type { Category } from '@/config/categories';
 import type { AdQuery } from '@/lib/classifieds/query';
@@ -44,6 +45,18 @@ export async function ClassifiedsBrowser({
 
   return (
     <>
+      {/*
+        Only when words were actually typed, and only on the first page: pages
+        two and three of one search are the same question asked once.
+      */}
+      {query.q.trim().length >= 2 && results.page === 1 ? (
+        <SearchRecorder
+          term={query.q.trim()}
+          resultCount={results.total}
+          categorySlug={query.category}
+        />
+      ) : null}
+
       <CategoryHeader category={category} totalLabel={totalLabel} />
 
       <Container className="py-8">

@@ -18,6 +18,13 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
  * Public visibility does not wait for this: `public_ads` hides an
  * advertisement the moment its date passes. The sweep is the bookkeeping —
  * the status change and the "expired automatically" entry in the history.
+ *
+ * The search log is pruned in the same call. It is daily housekeeping of the
+ * same kind, it wants no schedule of its own, and a retention period that is
+ * only enforced when somebody remembers to run it is not a retention period.
+ * `analytics.search_retention_days` in `app_settings` decides how long is
+ * kept; the default is ninety days. A failure to prune does not fail the
+ * sweep — expiry is what advertisers are waiting on.
  */
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +53,15 @@ async function run(request: Request) {
     console.error('expire_advertisements failed', error.message);
     return NextResponse.json({ ok: false, error: 'sweep failed' }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, expired: Number(data ?? 0), ranAt: new Date().toISOString() });
+  const { data: pruned, error: pruneError } = await supabase.rpc('prune_search_events');
+  if (pruneError) console.error('prune_search_events failed', pruneError.message);
+
+  return NextResponse.json({
+    ok: true,
+    expired: Number(data ?? 0),
+    searchEventsPruned: pruneError ? null : Number(pruned ?? 0),
+    ranAt: new Date().toISOString(),
+  });
 }
 
 export const GET = run;

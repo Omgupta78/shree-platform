@@ -98,3 +98,59 @@ export async function recordAdvertisementViewAction(advertisementId: string): Pr
   const supabase = await createSupabaseServerClient();
   await supabase.rpc('record_ad_view', { p_ad_id: advertisementId });
 }
+
+/* --------------------------------------------------------- what was asked -- */
+
+const searchSchema = z.object({
+  term: z
+    .string()
+    .transform((value) => value.trim())
+    .pipe(z.string().min(2).max(80)),
+  resultCount: z.number().int().min(0).max(1_000_000),
+  categorySlug: z.string().max(60).nullable(),
+});
+
+/**
+ * Records that somebody searched for something, and how much it found.
+ *
+ * What is written is the term, the number of results and the category — and
+ * nothing else. No account, no session, no address. `search_events` has no
+ * column for any of them, so this cannot become a record of what a named
+ * person was looking for even by accident later on.
+ *
+ * Called from the browser once the results are on screen, for the same reason
+ * the view counter is: a server render happens for prefetches and for metadata
+ * and would turn a hover over a link into a search somebody made.
+ *
+ * The category is resolved here from its slug rather than accepted as an id.
+ * The browser has a slug, the table wants a uuid, and taking a uuid from a
+ * caller would let one be written that points at anything.
+ */
+export async function recordSearchAction(input: {
+  term: string;
+  resultCount: number;
+  categorySlug: string | null;
+}): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  const parsed = searchSchema.safeParse(input);
+  if (!parsed.success) return;
+
+  const supabase = await createSupabaseServerClient();
+
+  let categoryId: string | null = null;
+  if (parsed.data.categorySlug) {
+    const { data } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', parsed.data.categorySlug)
+      .maybeSingle();
+    categoryId = data?.id ?? null;
+  }
+
+  await supabase.rpc('record_search', {
+    p_term: parsed.data.term,
+    p_result_count: parsed.data.resultCount,
+    p_category_id: categoryId,
+  });
+}

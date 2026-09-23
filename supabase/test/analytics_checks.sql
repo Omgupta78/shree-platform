@@ -100,6 +100,62 @@ begin
 end $$;
 
 -- =========================================================================
+-- 1b. A moderator is staff, and staff is not the same as the business
+-- =========================================================================
+/*
+ * The split the office actually needs. A moderator decides advertisements and
+ * should be able to see how the queue is doing; turnover, average order value
+ * and how many accounts opened are the proprietor's business and are refused
+ * in the database, not merely left off the moderator's dashboard.
+ */
+set role authenticated;
+select set_config('test.uid', '4c000000-0000-4000-8000-000000000003', false);
+
+do $$
+begin
+  begin
+    perform * from public.analytics_overview(current_setting('test.t0')::timestamptz, now());
+    raise exception 'FAIL: a moderator read the business overview';
+  exception when insufficient_privilege then
+    perform public.ok('a moderator cannot read revenue through the overview');
+  end;
+
+  begin
+    perform * from public.analytics_by_package(current_setting('test.t0')::timestamptz, now());
+    raise exception 'FAIL: a moderator read revenue by package';
+  exception when insufficient_privilege then
+    perform public.ok('a moderator cannot read revenue by package');
+  end;
+
+  begin
+    perform * from public.analytics_timeseries(current_setting('test.t0')::timestamptz, now(), 'day');
+    raise exception 'FAIL: a moderator read the revenue series';
+  exception when insufficient_privilege then
+    perform public.ok('a moderator cannot read the revenue series');
+  end;
+
+  begin
+    perform * from public.analytics_funnel(current_setting('test.t0')::timestamptz, now());
+    raise exception 'FAIL: a moderator read the user figures';
+  exception when insufficient_privilege then
+    perform public.ok('a moderator cannot read how many accounts were opened');
+  end;
+
+  -- And the other half: the queue is theirs.
+  perform * from public.analytics_moderation(current_setting('test.t0')::timestamptz, now());
+  perform public.ok('a moderator can read the moderation figures');
+end $$;
+
+set role authenticated;
+select set_config('test.uid', '4d000000-0000-4000-8000-000000000004', false);
+
+do $$
+begin
+  perform * from public.analytics_overview(current_setting('test.t0')::timestamptz, now());
+  perform public.ok('an administrator can read the business overview');
+end $$;
+
+-- =========================================================================
 -- 2. A known set of advertisements
 -- =========================================================================
 reset role;
@@ -457,7 +513,7 @@ begin
 end $$;
 
 -- =========================================================================
--- 10. Staff can read all of it
+-- 10. Each of them reads their own half
 -- =========================================================================
 set role authenticated;
 select set_config('test.uid', '4d000000-0000-4000-8000-000000000004', false);
@@ -473,10 +529,69 @@ select set_config('test.uid', '4c000000-0000-4000-8000-000000000003', false);
 do $$
 declare n int;
 begin
-  select count(*) into n from public.analytics_by_category(current_setting('test.t0')::timestamptz, now() + interval '1 day');
-  assert n >= 2;
-  perform public.ok('a moderator reads the figures too');
+  -- By location rather than by category: the location breakdown is counts of
+  -- advertisements, the category breakdown carries revenue, and only the
+  -- first is a moderator's.
+  select count(*) into n from public.analytics_by_location(current_setting('test.t0')::timestamptz, now() + interval '1 day');
+  assert n >= 1;
+  perform public.ok('a moderator reads the figures that are theirs to read');
 end $$;
+
+-- =========================================================================
+-- 11. The audit trail is not writable by whoever fancies it
+-- =========================================================================
+/*
+ * `write_audit()` was created SECURITY DEFINER without a grant, which in
+ * Postgres means EXECUTE to PUBLIC. Any signed-in account could therefore have
+ * written an approval that never happened, attributed to a moderator who never
+ * made it. Migration 0015 revokes it and puts a guarded shim beside it; these
+ * are the assertions that the revoke is real rather than a comment.
+ */
+set role authenticated;
+select set_config('test.uid', '4a000000-0000-4000-8000-000000000001', false);
+
+do $$
+begin
+  begin
+    perform public.write_audit('ad.approved', 'advertisement', null,
+                               'forged by an advertiser', null, null);
+    raise exception 'FAIL: an advertiser wrote into the audit trail';
+  exception when insufficient_privilege then
+    perform public.ok('an advertiser cannot write into the audit trail');
+  end;
+
+  begin
+    perform public.write_staff_audit('ad.approved', 'advertisement', null,
+                                     'forged by an advertiser', null, null);
+    raise exception 'FAIL: an advertiser wrote through the staff shim';
+  exception when insufficient_privilege then
+    perform public.ok('the guarded door is guarded, not merely named');
+  end;
+
+  begin
+    perform public.log_report_export('revenue', now() - interval '1 day', now(), 3);
+    raise exception 'FAIL: an advertiser logged a report export';
+  exception when insufficient_privilege then
+    perform public.ok('an advertiser cannot record an export they could not make');
+  end;
+end $$;
+
+-- And the other half: staff can still write, or the revoke would have broken
+-- the very trail it protects.
+select set_config('test.uid', '4d000000-0000-4000-8000-000000000004', false);
+do $$
+declare n int;
+begin
+  perform public.log_report_export('revenue', current_setting('test.t0')::timestamptz, now(), 7);
+  select count(*) into n from public.audit_log
+   where action = 'report.exported'
+     and actor_id = '4d000000-0000-4000-8000-000000000004'
+     and (after ->> 'rows')::int = 7;
+  assert n = 1, format('%s export entries were written, expected 1', n);
+  perform public.ok('an export is written down: who took what, over which dates, how many rows');
+end $$;
+
+reset role;
 
 reset role;
 do $$

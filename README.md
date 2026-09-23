@@ -217,7 +217,7 @@ promoting a user normally requires an existing administrator.
 | `npm run verify` | Typecheck, lint, build and end-to-end, in that order |
 
 `db:test` needs a local Postgres 16 and `psql`; it never touches Supabase. It
-applies every migration to a scratch database and runs **324 assertions**: 22 in
+applies every migration to a scratch database and runs **372 assertions**: 22 in
 `rls_checks.sql` from Phase 1, 103 in `backend_checks.sql` covering the ten
 escalation attacks, consent, payments, reports, favourites, the audit trail,
 storage paths, slug issuance and reference format, and 60 in
@@ -236,7 +236,15 @@ renewal approved without paying; and 50 in `notification_checks.sql`, which
 covers the two things notification systems actually get wrong — telling
 somebody twice, and letting one person read another's post — along with the
 sweep that must not remind daily, a payment message that must never claim
-publication, and a channel with nowhere to send.
+publication, and a channel with nowhere to send; and 48 in
+`analytics_checks.sql`, which builds a known set of advertisements, payments
+and decisions and checks the counting against hand-worked answers, because an
+analytics bug does not crash anything — it quietly reports a number somebody
+then plans against. It also asserts the two refusals that matter: an advertiser
+sees no figure at all, and a moderator sees the queue but not the money. It
+ends by proving the audit revoke described below is real: an advertiser can
+write neither through `write_audit()` nor through the guarded shim, and an
+export by an administrator does reach the trail.
 
 `e2e` needs a browser once: `npx playwright install chromium`.
 
@@ -568,10 +576,89 @@ made anybody staff.
 
 ### The audit trail is append-only
 
-`audit_log` records every status change, role grant, block, payment settlement and
-report resolution, with the actor read from the verified token. UPDATE and DELETE
-are revoked and a trigger raises on either, because an audit trail somebody can
-quietly edit is decoration.
+`audit_log` records every status change, role grant, block, payment settlement,
+report resolution and report export, with the actor read from the verified token.
+UPDATE and DELETE are revoked and a trigger raises on either, because an audit
+trail somebody can quietly edit is decoration.
+
+`write_audit()` is SECURITY DEFINER and was created in migration 0006 without a
+grant, which in Postgres means EXECUTE to PUBLIC — so any signed-in account
+could have written whatever it liked into the trail, including an approval
+attributed to a moderator who never made it. Migration 0015 revokes that. The
+existing callers are all trigger functions that are themselves SECURITY DEFINER,
+so nothing else changed.
+
+### Every figure is counted, and what is not counted says so
+
+Nothing on the analytics pages is sampled, seeded, projected or rounded up from
+a guess. Each panel is one call to one SQL function that counts real rows, and
+the definitions it counts to are written beside the number rather than in a
+document nobody opens: revenue is settled payments only, by the date the money
+was taken; the approval rate divides by the decisions actually made in the
+period; the renewal rate divides by the advertisements whose run **ended** in
+the period, not by every advertisement on the site.
+
+Where the site does not measure something, the panel says so instead of drawing
+a plausible line. Three things are named on the dashboard as not measured: a
+reader tapping a telephone or WhatsApp number, views inside a chosen period
+(each advertisement keeps one running total, not a row per view), and revenue by
+town. The "people who…" figures are counts of distinct people who did each thing
+in the period, not a cohort followed through, so the page prints them as counts
+and refuses to divide them into a conversion rate.
+
+A query that fails or is refused returns `null`, never a zero. This matters most
+for a moderator, who is refused revenue in the database: a refusal rendered as
+`₹0` would put a figure on the screen that nobody counted.
+
+### A moderator sees the queue; the money is the administrator's
+
+`require_analytics_reader()` admits staff and trusted connections.
+`require_revenue_reader()` admits administrators and trusted connections, and
+guards `analytics_overview`, `analytics_timeseries`, `analytics_by_package`,
+`analytics_by_category` and `analytics_funnel`. The dashboard also declines to
+render those panels to a moderator, and the report registry marks them
+`adminOnly` so the page and the CSV route both refuse — but the refusal that
+holds is the one in Postgres, which a moderator meets whatever route they take
+to the function.
+
+### Searches are recorded; searchers are not
+
+`search_events` has a term, a result count, a category and a timestamp. There is
+no user id, no session id and no address, so it cannot become a record of what a
+named person was looking for, even by a later change of mind. Recording happens
+from the browser once results are on screen — a server render also happens for
+prefetches and metadata, which would turn a hover into a search somebody made —
+and only for the first page of results, because pages two and three of one
+search are the same question. The category is resolved from its slug on the
+server; a caller never hands over a uuid. `analytics.search_retention_days` in
+`app_settings` decides how long the log is kept (ninety days by default) and the
+daily sweep prunes it, because a retention period only enforced when somebody
+remembers to run it is not a retention period.
+
+### An export is a thing that happened
+
+Taking figures out of the building is written into the audit trail before the
+file is sent: who, which report, over what dates, how many rows. The CSV route
+checks the caller's role itself rather than relying on the admin layout — a route
+handler does not render inside a layout — and checks the report's own
+restriction again on top of that. The file carries every row the report and
+filter return, not the page the reader happened to be on, because a spreadsheet
+of fifty rows out of four hundred with nothing to say so is how a wrong figure
+ends up in a plan.
+
+Money is written as rupees with two decimals and no symbol, so a spreadsheet can
+add the column up. Any cell beginning `=`, `+`, `-`, `@`, a tab or a carriage
+return is prefixed with an apostrophe: this export carries text the public typed,
+and a search term beginning `=HYPERLINK(...)` would otherwise become a live
+formula in the office's spreadsheet.
+
+### Two different things are called a report
+
+`/admin/reports` is the reader-report queue — what somebody flagged as a fraud or
+a duplicate — and it was there first. The business figures are at
+`/admin/analytics/reports`. Putting the month's revenue where the moderators look
+for complaints would be a confusion that lasted for years, so the sidebar calls
+the first one "Reported advertisements".
 
 ### Contact details sit on the advertisement, not the profile
 
@@ -628,15 +715,17 @@ src/
   app/
     (auth)/                sign in, sign up, password reset, and their actions
     auth/                  callback and sign-out route handlers
-    classifieds/           browse, one advertisement, report and view actions
+    classifieds/           browse, one advertisement, report, view and search actions
     my-ads/                the advertiser's dashboard, expired list, detail, renew, edit and payments
-    api/cron/              the expiry sweep endpoint
+    admin/analytics/       the dashboard, the detailed reports and the CSV export
+    api/cron/              the expiry sweep (and the search-log prune) endpoint
     api/payments/          create-order, verify, and Razorpay's webhook
     post-ad/               the submission form and its server action
     about/, advertise/,    the public information pages, built from config/site.ts,
     contact/                 app_settings, ad-types and the packages table
   components/
     advertisements/        card, gallery, contact, report modal, view counter
+    analytics/             line and bar charts, KPI card, funnel, range picker, empty states
     auth/                  account forms, header actions, sign-in panel
     classifieds/           filters, sorting, pagination, results
     layout/                header, footer, mobile nav
@@ -647,6 +736,7 @@ src/
     site/                  the office's own details, shared by those pages
     ui/                    button, badge, container, field, icons, states
   lib/
+    analytics/             ranges in the office's own day, the queries, the report registry
     auth/                  session reading and the account schemas
     classifieds/           query parsing, filters, similarity — pure functions
     data/                  data access — public_ads, owner_ads, packages, settings
@@ -665,7 +755,8 @@ supabase/
 e2e/                       Playwright, against a production build
   navigation.spec.ts       every link in the header and footer, asked of the server
   unit/                    pure functions — expiry wording, payment signatures,
-                             notification templates and escaping
+                             notification templates and escaping, date ranges
+                             and the CSV
   db/                      the admin suite, against a real local database
     harness/               seed, PostgREST launcher, auth gateway, build
 ```

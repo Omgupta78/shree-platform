@@ -140,11 +140,25 @@ export const ADMIN_NAV: ReadonlyArray<{ heading: string; items: readonly AdminNa
     items: [
       { href: '/admin/payments', label: 'Payments', built: true },
       { href: '/admin/notifications', label: 'Notifications', built: true },
-      { href: '/admin/reports', label: 'Reports', built: true, badge: 'open_reports' },
+      /*
+       * "Reported advertisements" rather than "Reports". There are two quite
+       * different things called a report in this office — what a reader flags,
+       * and what the business reads at the end of a month — and one menu
+       * cannot call both of them Reports. The reader's queue keeps the path
+       * it has always had; the business figures live under Analytics.
+       */
+      { href: '/admin/reports', label: 'Reported advertisements', built: true, badge: 'open_reports' },
       { href: '/admin/activity', label: 'Activity log', built: true },
       { href: '/admin/categories', label: 'Categories', built: true, adminOnly: true },
       { href: '/admin/packages', label: 'Packages', built: true, adminOnly: true },
       { href: '/admin/users', label: 'Users', built: true, adminOnly: true },
+    ],
+  },
+  {
+    heading: 'Figures',
+    items: [
+      { href: '/admin/analytics', label: 'Analytics', built: true },
+      { href: '/admin/analytics/reports', label: 'Detailed reports', built: true },
     ],
   },
   {

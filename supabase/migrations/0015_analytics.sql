@@ -140,10 +140,10 @@ alter table public.search_events enable row level security;
 revoke all on table public.search_events from anon, authenticated;
 
 -- =========================================================================
--- One gate, for every figure
+-- Two gates
 -- =========================================================================
 /*
- * One gate, called first by every function below.
+ * The first gate, called by every function below that does not touch money.
  *
  * Staff, or a trusted connection — the same pair `expire_advertisements()`
  * admits, and for the same reason: the service role already bypasses row-level
@@ -161,6 +161,34 @@ as $$
 begin
   if not (public.is_staff() or public.is_trusted_connection()) then
     raise exception 'Analytics are for Shree Classified staff'
+      using errcode = 'insufficient_privilege';
+  end if;
+end;
+$$;
+
+/*
+ * The money, and who counts as a person, are an administrator's.
+ *
+ * A moderator's job is the queue: what is waiting, how long it waited, who
+ * decided it. Turnover, average order value and how many accounts were opened
+ * are not needed to review an advertisement, and the difference between
+ * "staff" and "the person who runs the business" is exactly the difference
+ * between those two lists.
+ *
+ * This is the boundary that actually holds. The dashboard also declines to
+ * render those panels to a moderator, but that is politeness — a moderator who
+ * calls `analytics_overview` directly, with their own token, from anywhere at
+ * all, gets this exception instead of a revenue figure.
+ */
+create or replace function public.require_revenue_reader()
+returns void
+language plpgsql
+stable
+set search_path = public, pg_temp
+as $$
+begin
+  if not (public.is_admin() or public.is_trusted_connection()) then
+    raise exception 'Revenue and user figures are for an administrator'
       using errcode = 'insufficient_privilege';
   end if;
 end;
@@ -219,7 +247,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  perform public.require_analytics_reader();
+  perform public.require_revenue_reader();
 
   return query
   with decisions as (
@@ -307,7 +335,7 @@ declare
   step interval := case when p_grain = 'month' then interval '1 month' else interval '1 day' end;
   unit text     := case when p_grain = 'month' then 'month' else 'day' end;
 begin
-  perform public.require_analytics_reader();
+  perform public.require_revenue_reader();
 
   return query
   with series as (
@@ -376,7 +404,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  perform public.require_analytics_reader();
+  perform public.require_revenue_reader();
 
   return query
   select p.package_id,
@@ -414,7 +442,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  perform public.require_analytics_reader();
+  perform public.require_revenue_reader();
 
   return query
   select c.id, c.name,
@@ -712,7 +740,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  perform public.require_analytics_reader();
+  perform public.require_revenue_reader();
 
   return query
   select (select count(*) from public.profiles
@@ -775,3 +803,157 @@ grant execute on function public.analytics_renewals(timestamptz, timestamptz) to
 grant execute on function public.analytics_search(timestamptz, timestamptz, integer) to authenticated;
 grant execute on function public.analytics_top_ads(timestamptz, timestamptz, integer) to authenticated;
 grant execute on function public.analytics_funnel(timestamptz, timestamptz) to authenticated;
+
+-- =========================================================================
+-- Taking figures out of the building
+-- =========================================================================
+/*
+ * A download is a thing that happened, so it is written down.
+ *
+ * The office's figures leaving on a laptop is exactly the event an audit trail
+ * exists for, and "who exported the revenue report, and for what dates" is the
+ * question somebody will eventually need answered. It is recorded whether or
+ * not anything was wrong.
+ *
+ * This is a named function rather than a direct call to `write_audit()` for
+ * the reason immediately below.
+ */
+create or replace function public.log_report_export(
+  p_report text,
+  p_from   timestamptz,
+  p_to     timestamptz,
+  p_rows   integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not (public.is_staff() or public.is_trusted_connection()) then
+    raise exception 'Only Shree Classified staff export reports'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  perform public.write_audit(
+    'report.exported', 'analytics', null,
+    format('exported the %s report for %s to %s (%s rows)',
+           left(coalesce(p_report, 'unknown'), 40),
+           to_char(p_from at time zone 'Asia/Kolkata', 'DD Mon YYYY'),
+           to_char(p_to   at time zone 'Asia/Kolkata', 'DD Mon YYYY'),
+           greatest(coalesce(p_rows, 0), 0)),
+    null,
+    jsonb_build_object(
+      'report', left(coalesce(p_report, 'unknown'), 40),
+      'from', p_from,
+      'to', p_to,
+      'rows', greatest(coalesce(p_rows, 0), 0)));
+end $$;
+
+grant execute on function public.log_report_export(text, timestamptz, timestamptz, integer) to authenticated;
+
+/*
+ * And the hole that made the function above necessary.
+ *
+ * `write_audit()` is SECURITY DEFINER and was created in migration 0006
+ * without a grant, which in Postgres means EXECUTE to PUBLIC — so any signed-in
+ * account could have written whatever it liked into the audit trail: an
+ * approval that never happened, attributed to a moderator who never made it.
+ * The trail is the thing that is supposed to be true when everything else is
+ * in dispute.
+ *
+ * Almost every caller is a trigger function that is itself SECURITY DEFINER,
+ * and those are unaffected by a grant to PUBLIC being withdrawn. There is
+ * exactly one that is not: `extend_advertisement_expiry()`, which runs as the
+ * caller on purpose — it reads `ads` under the caller's own privileges so the
+ * contact columns stay ungranted — and therefore loses its ability to write
+ * the entry. It gets a named, guarded door instead.
+ */
+create or replace function public.write_staff_audit(
+  p_action    text,
+  p_entity    text,
+  p_entity_id uuid,
+  p_summary   text,
+  p_before    jsonb,
+  p_after     jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- The guard is the whole point of the shim. `write_audit()` has none,
+  -- because its callers are triggers that fire for ordinary advertisers.
+  if not (public.is_staff() or public.is_trusted_connection()) then
+    raise exception 'Only Shree Classified staff write to the audit trail'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  perform public.write_audit(p_action, p_entity, p_entity_id, p_summary, p_before, p_after);
+end $$;
+
+grant execute on function
+  public.write_staff_audit(text, text, uuid, text, jsonb, jsonb) to authenticated;
+
+-- The one invoker-rights caller, pointed at the guarded door. Unchanged in
+-- every other respect; reproduced from migration 0011.
+create or replace function public.extend_advertisement_expiry(
+  p_ad_id          uuid,
+  p_new_expires_at timestamptz,
+  p_reason         text
+)
+returns timestamptz
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  -- Named columns, not `*`: this runs as the caller, and the contact columns
+  -- are not granted to anybody at the table.
+  ad      record;
+  reason  text := nullif(btrim(coalesce(p_reason, '')), '');
+  ceiling int  := public.setting_int('ads.max_extension_days', 365);
+begin
+  if not public.is_admin() then
+    raise exception 'Only an administrator can extend an advertisement' using errcode = 'insufficient_privilege';
+  end if;
+  if reason is null then
+    raise exception 'A reason is required to extend an advertisement' using errcode = 'check_violation';
+  end if;
+
+  select id, status, expires_at, reference into ad
+    from public.ads where id = p_ad_id for update;
+  if not found then
+    raise exception 'No such advertisement' using errcode = 'no_data_found';
+  end if;
+  if ad.status <> 'approved' or ad.expires_at <= now() then
+    raise exception 'Only a live advertisement can be extended; a finished one is renewed'
+      using errcode = 'check_violation';
+  end if;
+  if p_new_expires_at is null or p_new_expires_at <= ad.expires_at then
+    raise exception 'The new expiry date must be later than the current one'
+      using errcode = 'check_violation';
+  end if;
+  if p_new_expires_at > now() + make_interval(days => ceiling) then
+    raise exception 'The new expiry date must be within % days of today', ceiling
+      using errcode = 'check_violation';
+  end if;
+
+  update public.ads set expires_at = p_new_expires_at where id = p_ad_id;
+
+  -- `write_staff_audit()` rather than `write_audit()`: this function runs as
+  -- the caller by design, and the caller no longer has EXECUTE on the raw
+  -- writer. See the revoke below.
+  perform public.write_staff_audit(
+    'ad.expiry_extended', 'advertisement', p_ad_id, reason,
+    jsonb_build_object('expires_at', ad.expires_at, 'status', ad.status),
+    jsonb_build_object('expires_at', p_new_expires_at, 'status', ad.status,
+                       'reference', ad.reference, 'note', reason, 'event', 'expiry_extended'));
+
+  return p_new_expires_at;
+end;
+$$;
+
+revoke execute on function
+  public.write_audit(text, text, uuid, text, jsonb, jsonb)
+  from public, anon, authenticated;
