@@ -170,6 +170,59 @@ end-to-end database suite drops and recreates its database on every run.
 
 ---
 
+## 3a. Applying the migrations to a new Supabase project
+
+The sixteen migrations must be applied **in order**, and two of them must be
+applied **on their own**.
+
+`0008` and `0012` each do nothing but add a value to an enum
+(`changes_requested`, `cancelled`). Postgres will not let a value added by
+`ALTER TYPE ... ADD VALUE` be *used* until that transaction has committed — and
+`0009` and `0013` use them. Supabase's SQL editor runs whatever you paste as a
+single transaction, so pasting all sixteen at once fails with:
+
+```
+ERROR: unsafe use of new value "changes_requested" of enum type ad_status
+```
+
+That is not a fault in the migrations; it is why those two are separate files.
+
+**Two ways to apply them.**
+
+*The CLI*, which runs each file separately and has no such problem:
+
+```bash
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+*The SQL editor*, in five runs. Group the files like this, running each group
+to completion before starting the next:
+
+| Run | Files |
+| --- | --- |
+| 1 | `0001` – `0007` |
+| 2 | `0008` **alone** |
+| 3 | `0009` – `0011` |
+| 4 | `0012` **alone** |
+| 5 | `0013` – `0016` |
+
+Either way, check afterwards that the schema is complete:
+
+```sql
+select count(*) from information_schema.tables
+ where table_schema = 'public' and table_type = 'BASE TABLE';          -- 19
+select count(*) from pg_tables where schemaname = 'public' and rowsecurity;  -- 19
+select count(*) from public.categories;                                -- 43
+select count(*) from public.packages;                                  -- 3
+```
+
+If the table count is right but the RLS count is lower, stop: a table without
+row-level security is readable by anybody holding the anon key, which is a key
+that ships to every browser.
+
+---
+
 ## 4. Deploying to Vercel
 
 The project is a standard Next.js application; nothing about the hosting is
