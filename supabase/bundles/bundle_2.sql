@@ -1,0 +1,35 @@
+-- ============================================================
+-- Bundle 2 of 5 — add the 'changes_requested' status (must run ALONE)
+--
+-- Paste this WHOLE file into the Supabase SQL editor and press Run.
+-- Run the bundles in order. Wait for each to finish before the next.
+-- Built from: 0008_ad_status_changes_requested.sql
+-- Generated from supabase/migrations/ — do not edit by hand.
+-- ============================================================
+
+-- ----- begin 0008_ad_status_changes_requested.sql -----
+-- =============================================================================
+-- Shree Classified — Phase 7: a third answer to a submission
+--
+-- This migration contains ONE statement, and that is the whole reason it
+-- exists as its own file.
+--
+-- `ALTER TYPE ... ADD VALUE` cannot be used in the same transaction that adds
+-- it: Postgres will not let a constraint, a function body or a query refer to
+-- an enum value whose creation has not committed. The Supabase SQL editor runs
+-- a script as one transaction, so an enum change sharing a file with anything
+-- that uses the new value fails there while passing under `psql -f`, which
+-- commits each statement on its own. Splitting the file is the fix, and is why
+-- 0009 may only be run after this one has finished.
+--
+-- What it adds: `changes_requested`. Until now a submission could only be
+-- published or refused, and most of what comes through an office is neither —
+-- the photograph is unreadable, the locality is missing, the number has nine
+-- digits. This is the state that sends it back with a message so the
+-- advertiser can correct it rather than start again.
+-- =============================================================================
+
+alter type public.ad_status add value if not exists 'changes_requested' after 'rejected';
+
+-- ----- end 0008_ad_status_changes_requested.sql -----
+
