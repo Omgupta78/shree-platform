@@ -1,5 +1,14 @@
 # Connecting the site to your Supabase project
 
+> **This has been done.** The database, the two storage buckets and the
+> security policies are all in place on project `xebcikryasdgiwqexvaq`, applied
+> and verified on 23 September 2026. Nothing below needs doing again. It is
+> kept as the record of how it was set up, and as the procedure for standing up
+> a second project — a staging one, or a replacement.
+>
+> What is still outstanding is in `DEPLOYMENT.md`: real package prices, the
+> first administrator, backups, and the Razorpay, email and WhatsApp accounts.
+
 Your project is already created (`xebcikryasdgiwqexvaq`). What is left is to put
 the database tables into it, create two folders for images, and make yourself
 the administrator.

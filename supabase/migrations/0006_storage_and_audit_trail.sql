@@ -27,7 +27,27 @@ insert into storage.buckets (id, name, public) values
   ('ad-artwork', 'ad-artwork', false)
 on conflict (id) do update set public = excluded.public;
 
-alter table storage.objects enable row level security;
+-- Row-level security on `storage.objects`.
+--
+-- On hosted Supabase this is already enabled and the table is owned by
+-- `supabase_storage_admin`, so a bare `alter table` fails with "must be owner
+-- of table objects" even as `postgres`. The guard makes the statement a no-op
+-- where it is already done, and the handler keeps a project that somehow has
+-- it off -- and will not let us turn it on -- from failing the whole migration
+-- when the policies below are what actually matter.
+do $$
+begin
+  if not exists (
+    select 1 from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'storage' and c.relname = 'objects' and c.relrowsecurity
+  ) then
+    alter table storage.objects enable row level security;
+  end if;
+exception
+  when insufficient_privilege then
+    raise notice 'storage.objects: RLS left as found (not owner)';
+end $$;
 
 -- Photographs on a published advertisement are public to read.
 drop policy if exists ad_images_public_read on storage.objects;
@@ -52,8 +72,12 @@ create policy ad_files_owner_insert on storage.objects
     bucket_id in ('ad-images', 'ad-artwork')
     and auth.uid() is not null
     and (storage.foldername(name))[1] = auth.uid()::text
-    -- <user id>/<ad id>/<file>: a flat upload into the bucket root is refused.
-    and array_length(storage.foldername(name), 1) >= 3
+    -- <user id>/<ad id>/<file>. `storage.foldername()` returns the FOLDER
+    -- parts only -- the file name is not one of them -- so that path is two
+    -- elements, not three. Two is therefore the minimum that still refuses a
+    -- file dropped loose at the user's root (`<user id>/<file>`, one element)
+    -- or at the bucket root (none).
+    and coalesce(array_length(storage.foldername(name), 1), 0) >= 2
   );
 
 drop policy if exists ad_files_owner_update on storage.objects;

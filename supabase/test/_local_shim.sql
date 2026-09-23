@@ -44,7 +44,17 @@ create or replace function storage.foldername(name text)
 returns text[]
 language sql
 immutable
-as $$ select string_to_array(name, '/') $$;
+as $$
+  -- Matches hosted Supabase: the FOLDER parts only, with the final segment
+  -- (the file name) dropped. Splitting the whole path instead -- which this
+  -- shim used to do -- makes `uid/ad/file.png` three elements rather than two,
+  -- and any policy asserting a minimum depth then passes locally while failing
+  -- against a real project.
+  select case
+           when name is null or name = '' then array[]::text[]
+           else (string_to_array(name, '/'))[1:greatest(array_length(string_to_array(name, '/'), 1) - 1, 0)]
+         end
+$$;
 
 grant usage on schema auth, storage to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;

@@ -5,12 +5,20 @@ having built it. Where something is marked verified, it was run: the test
 suites were executed, the routes were fetched from a production build, the
 queries were read.
 
-No code was changed while producing this report.
+No code was changed while producing the original report. The later pass against
+a real Supabase project did change code: the storage policy and the test shim,
+both recorded under C2.
 
-**Verdict: one blocker, and it is not in the code.** Four legal pages do not
-exist, and Razorpay will not activate live payments without three of them.
-Everything else is either working, needs a credential, or is a judgement call
-recorded below.
+**Verdict: two blockers, neither now in the application code.** Backups are not
+configured, and no real payment has been put through. Everything else is either
+working, needs a credential, or is a judgement call recorded below.
+
+**Updated after connecting a real Supabase project.** The migrations, the
+buckets and the advertisement lifecycle have now been run against
+`shree_classified` rather than only a local Postgres. That exercise found one
+genuine defect — every image upload would have been refused in production — 
+which is recorded as C2 and fixed. The earlier verdict, written before a real
+project existed, could not have found it.
 
 ---
 
@@ -22,7 +30,7 @@ recorded below.
 | `npm run lint` | Clean, zero warnings |
 | `npm run build` | Compiles, 58 routes |
 | `npm run e2e` | **199 passed** against a production build |
-| `npm run db:test` | **386 assertions passed** across 8 suites |
+| `npm run db:test` | **388 assertions passed** across 8 suites |
 | Every public route fetched | 17 routes, all 200 |
 | Every private route fetched signed-out | 10 routes, all refuse with a sign-in panel |
 | Every hidden route fetched | 7 routes, all 404 |
@@ -78,24 +86,80 @@ separately. Rehearse one restore into a scratch project before launch.
 **Blocks launch: YES** in the sense that launching without it risks total,
 unrecoverable data loss. It is not a code defect.
 
-### H2 — Nothing has been tested against a real database
+### H2 — Nothing has been tested against a real database — **CLOSED**
 
-**Problem.** This container has no Supabase credentials, so every application
-path that touches Supabase ran against the offline dataset or not at all. The
-386 database assertions run against a local Postgres with the real migrations
-applied, which covers the SQL thoroughly — but the seam between the application
-and a live Supabase has never been exercised.
+**Was:** this container had no Supabase credentials, so every application path
+that touched Supabase ran against the offline dataset or not at all.
 
-**Specifically unverified:** a real payment end to end, a real Razorpay webhook
-and a duplicate of it, email delivery from a verified domain, a WhatsApp
-template message, sign-up through to publication, and the database half of the
-missing-advertisement 404.
+**Now exercised against a real Supabase project** (`shree_classified`,
+ap-south-1). The sixteen migrations were applied, the two buckets created, and
+the following run end to end with real rows, not fixtures:
 
-**Recommended fix.** Run the journeys in a staging Supabase project before
-pointing a domain at it.
+| Journey | Result |
+| --- | --- |
+| Sign-up creating a profile | Trigger populated name, phone, `role='user'` |
+| Advertiser submits an advertisement | Accepted as `pending`; database issued `SC100002` and the slug |
+| Advertiser submits it as `approved` | Refused — *"A new advertisement may only be saved as a draft or submitted for review"* |
+| Advertiser approves their own advertisement | Refused — *"Only Shree Classified staff can set an advertisement to approved"* |
+| Another advertiser approves it | Zero rows matched; row-level security hid it entirely |
+| Non-staff calls `moderate_advertisement` | Refused — *"Only Shree Classified staff can moderate"* |
+| Moderator calls it | Approved; `published_at` and `expires_at` stamped |
+| Approved advertisement, anonymous | Visible on the browse page and its own page, 200, real data |
+| Advertisement that does not exist | **404** — the half of this that needed a database |
+| Reading another advertiser's profile | One row (their own), not two |
+| Promoting oneself to administrator | Refused — *"Only an administrator can change a user role"* |
+| `contact_phone` over the anonymous API | Refused at column level |
+| Audit trail | Recorded creation and approval; UPDATE and DELETE both refused as `postgres` |
+| Uploads | See C2 below — a real defect, found here and fixed |
 
-**Blocks launch: YES.** Not because a defect is known, but because absence of
-evidence is not evidence of absence.
+All test accounts, advertisements and files were removed afterwards. The
+project holds its reference data and nothing else. Four rows remain in
+`audit_log`, which is append-only by design and cannot be cleared.
+
+**Still not verified, and unchanged:** a real payment end to end, a real
+Razorpay webhook and a duplicate of it, email delivery from a verified domain,
+and a WhatsApp template message. Each needs a provider account that does not
+exist yet.
+
+**Blocks launch: NO** for the database seam. **YES** for payment, until one
+live transaction has been put through.
+
+### C2 — Image uploads would have failed in production — **FIXED**
+
+**Path:** `supabase/migrations/0006_storage_and_audit_trail.sql`, the
+`ad_files_owner_insert` policy.
+
+**Problem.** The policy required `array_length(storage.foldername(name), 1)
+>= 3`. On hosted Supabase `storage.foldername()` returns the *folder* parts
+only, with the file name excluded, so the path the application builds --
+`<user id>/<advertisement id>/<file>`, from `storagePath()` in
+`src/lib/post-ad/upload.ts` -- is **two** elements. Every upload would have
+been refused by row-level security. No advertiser could have attached a
+photograph.
+
+**Why the tests did not catch it.** `supabase/test/_local_shim.sql` defined
+`storage.foldername()` as `string_to_array(name, '/')`, which keeps the file
+name and makes the same path three elements. The shim and the policy were both
+wrong, in exactly compensating ways, so the assertions passed for the wrong
+reason. This is the failure mode H2 existed to warn about, and it was found the
+first time a real project was used.
+
+**Fixed.** The shim now matches hosted Supabase on all four shapes
+(`uid/ad/file` 2, `uid/ad/sub/file` 3, `uid/loose` 1, `loose` 0). The threshold
+is now `>= 2`, which still refuses a file loose in the advertiser's own folder
+and one at the bucket root. Two assertions were added: the loose-in-own-folder
+case, which nothing covered, and a direct guard on the shim's semantics.
+Reverting the threshold to `>= 3` now fails the suite, which was confirmed.
+
+Verified against the live project afterwards: the application's own path
+uploads, another advertiser's folder is refused, a loose file in one's own
+folder is refused, the bucket root is refused, `ad-images` reads publicly and
+`ad-artwork` does not.
+
+**One operational note, not a defect.** Supabase serves storage through a CDN,
+so a response authorised for a member of staff can still be served from cache
+after that person's role is removed. Revoking staff does not instantly revoke
+an already-fetched private file.
 
 ---
 
@@ -281,12 +345,14 @@ refusal assertions across the suites.
 
 ## PRODUCTION BLOCKERS
 
-1. **The four legal pages** (C1) — Razorpay will not go live without three of
-   them.
-2. **Backups** (H1) — not a code defect, but launching without them risks
-   unrecoverable loss.
-3. **A staging run against a real Supabase and a real payment** (H2) — the
-   application-to-Supabase seam has never been exercised.
+1. **Backups** (H1) — not a code defect, but launching without them risks
+   unrecoverable loss. Still open.
+2. **One real payment, end to end** — the remaining half of H2. The database
+   seam is now proven; the Razorpay seam is not, and cannot be from here.
+
+Closed since the first audit: the legal pages (C1) exist; the
+application-to-Supabase seam (H2) has been exercised against a real project,
+which found and fixed C2.
 
 ## NON-BLOCKING ISSUES
 

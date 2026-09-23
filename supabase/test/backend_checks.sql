@@ -1014,6 +1014,28 @@ begin
     perform public.ok('a file outside the <user>/<advertisement>/ path is refused');
   end;
 
+  -- The case that distinguishes a depth of two from a depth of one, and the
+  -- one this suite used to miss: a file dropped straight into the advertiser's
+  -- own folder, with no advertisement folder under it. The first segment is
+  -- their own id, so ownership alone does not refuse it -- only the depth does.
+  begin
+    insert into storage.objects (bucket_id, name)
+    values ('ad-images', 'a0000000-0000-4000-8000-000000000001/loose.webp');
+    raise exception 'FAIL: a file was uploaded loose in the advertiser''s own folder';
+  exception when insufficient_privilege then
+    perform public.ok('a file loose in the advertiser''s own folder is refused');
+  end;
+
+  -- Guards the shim itself. `storage.foldername()` on hosted Supabase returns
+  -- the folder parts WITHOUT the file name, so the path the application builds
+  -- is two elements. A shim that splits the whole path makes it three, and a
+  -- policy written against that passes here and fails in production -- which is
+  -- exactly what happened before this assertion existed.
+  if coalesce(array_length(storage.foldername('uid/ad/0-abc.png'), 1), 0) <> 2 then
+    raise exception 'FAIL: storage.foldername() does not match hosted Supabase (expected 2 parts for uid/ad/file)';
+  end if;
+  perform public.ok('storage.foldername() matches hosted Supabase semantics');
+
   insert into storage.objects (bucket_id, name)
   values ('ad-artwork', format('a0000000-0000-4000-8000-000000000001/%s/brief.pdf', ad));
   select count(*) into n from storage.objects where bucket_id = 'ad-artwork';
